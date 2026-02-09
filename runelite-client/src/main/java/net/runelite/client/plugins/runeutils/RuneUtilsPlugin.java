@@ -269,27 +269,59 @@ public class RuneUtilsPlugin extends Plugin
 
 	private void handleCreateProfile(MenuEntry entry)
 	{
-		// Get clicked item
-		Widget inventoryWidget = client.getWidget(ComponentID.INVENTORY_CONTAINER);
-		if (inventoryWidget == null)
+		// Determine which container type based on the menu option
+		ContainerType containerType = null;
+		ItemContainer container = null;
+
+		String option = entry.getOption();
+		log.info("handleCreateProfile called with option: {}", option);
+
+		// Check if it's an inventory item (has Drop or Use in the original menu)
+		if (option.equals("Create Profile"))
 		{
+			// Need to determine from widget or other menu entries
+			// For now, check both inventory and bank
+			ItemContainer inv = client.getItemContainer(InventoryID.INVENTORY);
+			ItemContainer bank = client.getItemContainer(InventoryID.BANK);
+
+			int slot = entry.getParam0();
+
+			// Try inventory first
+			if (inv != null && slot >= 0 && slot < inv.size())
+			{
+				Item item = inv.getItems()[slot];
+				if (item != null && item.getId() != -1)
+				{
+					containerType = ContainerType.INVENTORY;
+					container = inv;
+				}
+			}
+
+			// Try bank if inventory didn't match
+			if (containerType == null && bank != null && slot >= 0 && slot < bank.size())
+			{
+				Item item = bank.getItems()[slot];
+				if (item != null && item.getId() != -1)
+				{
+					containerType = ContainerType.BANK;
+					container = bank;
+				}
+			}
+		}
+
+		if (containerType == null || container == null)
+		{
+			log.warn("Could not determine container type for profile creation");
 			return;
 		}
 
-		ItemContainer inventory = client.getItemContainer(InventoryID.INVENTORY);
-		if (inventory == null)
-		{
-			return;
-		}
-
-		// Find the item that was clicked
 		int slot = entry.getParam0();
-		if (slot < 0 || slot >= inventory.size())
+		if (slot < 0 || slot >= container.size())
 		{
 			return;
 		}
 
-		Item item = inventory.getItems()[slot];
+		Item item = container.getItems()[slot];
 		if (item == null || item.getId() == -1)
 		{
 			return;
@@ -302,12 +334,21 @@ public class RuneUtilsPlugin extends Plugin
 			itemName = "Unknown Item";
 		}
 
-		// Capture current container states
-		ProfileState profile = captureCurrentContainerState(itemName + " Profile");
+		// Create profile for this specific container
+		ProfileState profile = new ProfileState(itemName + " Profile", containerType);
+
+		// Capture snapshot of this container
+		Function<Integer, String> itemNameLookup = getItemNameLookup();
+		ContainerSnapshot snapshot = ContainerSnapshot.captureFromContainer(
+			containerType,
+			container,
+			itemNameLookup
+		);
+		profile.setSnapshot(snapshot);
 
 		// Add to panel
 		panel.addProfileState(profile);
-		panel.log("Created profile: " + profile.getName());
+		panel.log("Created " + containerType.getDisplayName() + " profile: " + profile.getName());
 	}
 
 	/**
@@ -335,63 +376,5 @@ public class RuneUtilsPlugin extends Plugin
 			}
 			return client.getItemContainer(type.getInventoryId());
 		};
-	}
-
-	/**
-	 * Capture current state of all containers
-	 */
-	private ProfileState captureCurrentContainerState(String profileName)
-	{
-		ProfileState profile = new ProfileState();
-		profile.setName(profileName);
-
-		Function<Integer, String> itemNameLookup = getItemNameLookup();
-
-		// Capture inventory
-		ItemContainer inventory = client.getItemContainer(InventoryID.INVENTORY);
-		if (inventory != null)
-		{
-			ContainerSnapshot invSnapshot = ContainerSnapshot.captureFromContainer(
-				ContainerType.INVENTORY,
-				inventory,
-				itemNameLookup
-			);
-			if (invSnapshot.getItemCount() > 0)
-			{
-				profile.setContainerSnapshot(ContainerType.INVENTORY, invSnapshot);
-			}
-		}
-
-		// Capture equipment
-		ItemContainer equipment = client.getItemContainer(InventoryID.EQUIPMENT);
-		if (equipment != null)
-		{
-			ContainerSnapshot eqSnapshot = ContainerSnapshot.captureFromContainer(
-				ContainerType.EQUIPMENT,
-				equipment,
-				itemNameLookup
-			);
-			if (eqSnapshot.getItemCount() > 0)
-			{
-				profile.setContainerSnapshot(ContainerType.EQUIPMENT, eqSnapshot);
-			}
-		}
-
-		// Capture bank if open
-		ItemContainer bank = client.getItemContainer(InventoryID.BANK);
-		if (bank != null)
-		{
-			ContainerSnapshot bankSnapshot = ContainerSnapshot.captureFromContainer(
-				ContainerType.BANK,
-				bank,
-				itemNameLookup
-			);
-			if (bankSnapshot.getItemCount() > 0)
-			{
-				profile.setContainerSnapshot(ContainerType.BANK, bankSnapshot);
-			}
-		}
-
-		return profile;
 	}
 }

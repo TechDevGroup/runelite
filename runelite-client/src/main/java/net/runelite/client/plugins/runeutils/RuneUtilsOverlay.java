@@ -154,21 +154,27 @@ public class RuneUtilsOverlay extends Overlay
 				continue;
 			}
 
-			ContainerSnapshot invSnapshot = profile.getContainerSnapshot(ContainerType.INVENTORY);
-			if (invSnapshot == null)
+			// Only check inventory profiles
+			if (profile.getContainerType() != ContainerType.INVENTORY)
+			{
+				continue;
+			}
+
+			ContainerSnapshot snapshot = profile.getSnapshot();
+			if (snapshot == null)
 			{
 				continue;
 			}
 
 			// Check position-specific items
-			TrackedItemState positionState = invSnapshot.getPositionSpecificStates().get(slot);
+			TrackedItemState positionState = snapshot.getPositionSpecificStates().get(slot);
 			if (positionState != null && positionState.matches(itemId, itemName, quantity, slot))
 			{
 				return true;
 			}
 
 			// Check position-agnostic items
-			for (TrackedItemState state : invSnapshot.getPositionAgnosticStates().values())
+			for (TrackedItemState state : snapshot.getPositionAgnosticStates().values())
 			{
 				if (state.matches(itemId, itemName, quantity, null))
 				{

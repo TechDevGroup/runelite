@@ -6,8 +6,6 @@ import net.runelite.client.ui.FontManager;
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import java.awt.*;
-import java.util.*;
-import java.util.List;
 
 public class ProfileCardPanel extends JPanel
 {
@@ -25,8 +23,7 @@ public class ProfileCardPanel extends JPanel
 	private JLabel itemCountLabel;
 	private JToggleButton enableButton;
 	private JPanel contentPanel;
-
-	private final Map<ContainerType, ItemGridPanel> gridPanels;
+	private ItemGridPanel gridPanel;
 
 	public ProfileCardPanel(ItemManager itemManager, ProfileState profile, Runnable onDataChanged)
 	{
@@ -34,7 +31,6 @@ public class ProfileCardPanel extends JPanel
 		this.profile = profile;
 		this.onDataChanged = onDataChanged;
 		this.expanded = true;
-		this.gridPanels = new HashMap<>();
 
 		setLayout(new BoxLayout(this, BoxLayout.Y_AXIS));
 		setBackground(ColorScheme.DARKER_GRAY_COLOR);
@@ -67,7 +63,7 @@ public class ProfileCardPanel extends JPanel
 		toggleButton.addActionListener(e -> toggleExpanded());
 		leftPanel.add(toggleButton);
 
-		nameLabel = new JLabel(profile.getName());
+		nameLabel = new JLabel(profile.getDisplayName());
 		nameLabel.setFont(FontManager.getRunescapeBoldFont());
 		nameLabel.setForeground(Color.WHITE);
 		nameLabel.addMouseListener(new java.awt.event.MouseAdapter()
@@ -123,41 +119,31 @@ public class ProfileCardPanel extends JPanel
 		panel.setBackground(ColorScheme.DARK_GRAY_COLOR);
 		panel.setBorder(new EmptyBorder(5, 0, 0, 0));
 
-		JTabbedPane tabbedPane = new JTabbedPane();
-		tabbedPane.setBackground(ColorScheme.DARK_GRAY_COLOR);
+		gridPanel = new ItemGridPanel(
+			itemManager,
+			profile.getContainerType(),
+			this::notifyDataChanged
+		);
+		gridPanel.setSnapshot(profile.getSnapshot());
 
-		for (ContainerType containerType : ContainerType.values())
+		// Different layout based on container type
+		if (profile.getContainerType() == ContainerType.BANK)
 		{
-			ContainerSnapshot snapshot = profile.getContainerSnapshot(containerType);
-
-			ItemGridPanel gridPanel = new ItemGridPanel(
-				itemManager,
-				containerType,
-				this::notifyDataChanged
-			);
-			gridPanel.setSnapshot(snapshot);
-			gridPanels.put(containerType, gridPanel);
-
-			if (containerType == ContainerType.BANK)
-			{
-				JScrollPane scrollPane = new JScrollPane(gridPanel);
-				scrollPane.setPreferredSize(new Dimension(0, 400));
-				scrollPane.setBackground(ColorScheme.DARK_GRAY_COLOR);
-				scrollPane.getVerticalScrollBar().setUnitIncrement(16);
-				tabbedPane.addTab(containerType.name(), scrollPane);
-			}
-			else
-			{
-				// Use BorderLayout.CENTER to let the grid fill available space
-				JPanel wrapperPanel = new JPanel(new BorderLayout());
-				wrapperPanel.setBackground(ColorScheme.DARK_GRAY_COLOR);
-				wrapperPanel.setBorder(new EmptyBorder(10, 10, 10, 10));
-				wrapperPanel.add(gridPanel, BorderLayout.CENTER);
-				tabbedPane.addTab(containerType.name(), wrapperPanel);
-			}
+			JScrollPane scrollPane = new JScrollPane(gridPanel);
+			scrollPane.setPreferredSize(new Dimension(0, 400));
+			scrollPane.setBackground(ColorScheme.DARK_GRAY_COLOR);
+			scrollPane.getVerticalScrollBar().setUnitIncrement(16);
+			panel.add(scrollPane, BorderLayout.CENTER);
 		}
-
-		panel.add(tabbedPane, BorderLayout.CENTER);
+		else
+		{
+			// Use BorderLayout.CENTER to let the grid fill available space
+			JPanel wrapperPanel = new JPanel(new BorderLayout());
+			wrapperPanel.setBackground(ColorScheme.DARK_GRAY_COLOR);
+			wrapperPanel.setBorder(new EmptyBorder(10, 10, 10, 10));
+			wrapperPanel.add(gridPanel, BorderLayout.CENTER);
+			panel.add(wrapperPanel, BorderLayout.CENTER);
+		}
 
 		return panel;
 	}
@@ -182,7 +168,7 @@ public class ProfileCardPanel extends JPanel
 		if (newName != null && !newName.trim().isEmpty())
 		{
 			profile.setName(newName.trim());
-			nameLabel.setText(profile.getName());
+			nameLabel.setText(profile.getDisplayName());
 			notifyDataChanged();
 		}
 	}
@@ -212,41 +198,21 @@ public class ProfileCardPanel extends JPanel
 
 	private void updateItemCount()
 	{
-		int totalItems = 0;
-
-		for (ContainerType containerType : ContainerType.values())
-		{
-			ContainerSnapshot snapshot = profile.getContainerSnapshot(containerType);
-			if (snapshot != null)
-			{
-				totalItems += snapshot.getItemCount();
-			}
-		}
-
-		itemCountLabel.setText("(" + totalItems + " items)");
-	}
-
-	public void refreshGrids()
-	{
-		for (Map.Entry<ContainerType, ItemGridPanel> entry : gridPanels.entrySet())
-		{
-			ContainerSnapshot snapshot = profile.getContainerSnapshot(entry.getKey());
-			entry.getValue().setSnapshot(snapshot);
-		}
-
-		updateItemCount();
+		int itemCount = profile.getItemCount();
+		itemCountLabel.setText("(" + itemCount + " items)");
 	}
 
 	private void notifyDataChanged()
 	{
 		updateItemCount();
 
-		for (Map.Entry<ContainerType, ItemGridPanel> entry : gridPanels.entrySet())
+		// Update profile snapshot from grid
+		if (gridPanel != null)
 		{
-			ContainerSnapshot snapshot = entry.getValue().getSnapshot();
+			ContainerSnapshot snapshot = gridPanel.getSnapshot();
 			if (snapshot != null)
 			{
-				profile.setContainerSnapshot(entry.getKey(), snapshot);
+				profile.setSnapshot(snapshot);
 			}
 		}
 
@@ -258,12 +224,13 @@ public class ProfileCardPanel extends JPanel
 
 	public ProfileState getProfile()
 	{
-		for (Map.Entry<ContainerType, ItemGridPanel> entry : gridPanels.entrySet())
+		// Sync snapshot from grid
+		if (gridPanel != null)
 		{
-			ContainerSnapshot snapshot = entry.getValue().getSnapshot();
+			ContainerSnapshot snapshot = gridPanel.getSnapshot();
 			if (snapshot != null)
 			{
-				profile.setContainerSnapshot(entry.getKey(), snapshot);
+				profile.setSnapshot(snapshot);
 			}
 		}
 

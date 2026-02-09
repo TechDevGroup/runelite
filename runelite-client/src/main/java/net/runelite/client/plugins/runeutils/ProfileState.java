@@ -1,84 +1,30 @@
 package net.runelite.client.plugins.runeutils;
 
-import java.util.EnumMap;
-import java.util.Map;
-import java.util.Set;
 import java.util.function.Function;
 import lombok.Data;
 import net.runelite.api.ItemContainer;
 
 /**
- * Represents a complete profile state with multiple container snapshots
+ * Represents a profile for a single container type
  */
 @Data
 public class ProfileState
 {
 	private String name = "New Profile";
-	private Map<ContainerType, ContainerSnapshot> containerSnapshots = new EnumMap<>(ContainerType.class);
+	private ContainerType containerType = ContainerType.INVENTORY;
+	private ContainerSnapshot snapshot;
 	private boolean enabled = true;
-	private ValidationMode validationMode = ValidationMode.ALL;
 
-	/**
-	 * Validation mode for multiple container snapshots
-	 */
-	public enum ValidationMode
+	public ProfileState()
 	{
-		ALL("Match All"),
-		ANY("Match Any"),
-		NONE("Match None");
-
-		private final String displayName;
-
-		ValidationMode(String displayName)
-		{
-			this.displayName = displayName;
-		}
-
-		@Override
-		public String toString()
-		{
-			return displayName;
-		}
+		this.snapshot = new ContainerSnapshot(containerType);
 	}
 
-	/**
-	 * Set a container snapshot for a specific container type
-	 */
-	public void setContainerSnapshot(ContainerType type, ContainerSnapshot snapshot)
+	public ProfileState(String name, ContainerType containerType)
 	{
-		containerSnapshots.put(type, snapshot);
-	}
-
-	/**
-	 * Get a container snapshot for a specific container type
-	 */
-	public ContainerSnapshot getContainerSnapshot(ContainerType type)
-	{
-		return containerSnapshots.get(type);
-	}
-
-	/**
-	 * Remove a container snapshot
-	 */
-	public void removeContainerSnapshot(ContainerType type)
-	{
-		containerSnapshots.remove(type);
-	}
-
-	/**
-	 * Check if this profile has any container snapshots
-	 */
-	public boolean hasContainerSnapshots()
-	{
-		return !containerSnapshots.isEmpty();
-	}
-
-	/**
-	 * Get the set of tracked container types
-	 */
-	public Set<ContainerType> getTrackedContainers()
-	{
-		return containerSnapshots.keySet();
+		this.name = name;
+		this.containerType = containerType;
+		this.snapshot = new ContainerSnapshot(containerType);
 	}
 
 	/**
@@ -90,100 +36,28 @@ public class ProfileState
 	 */
 	public boolean validate(Function<ContainerType, ItemContainer> containerProvider, Function<Integer, String> itemNameLookup)
 	{
-		if (!enabled || containerSnapshots.isEmpty())
+		if (!enabled || snapshot == null)
 		{
 			return false;
 		}
 
-		int matchCount = 0;
-		int totalChecks = containerSnapshots.size();
-
-		for (Map.Entry<ContainerType, ContainerSnapshot> entry : containerSnapshots.entrySet())
-		{
-			ContainerType type = entry.getKey();
-			ContainerSnapshot snapshot = entry.getValue();
-
-			ItemContainer container = containerProvider.apply(type);
-			if (snapshot.validate(container, itemNameLookup))
-			{
-				matchCount++;
-			}
-		}
-
-		switch (validationMode)
-		{
-			case ALL:
-				return matchCount == totalChecks;
-			case ANY:
-				return matchCount > 0;
-			case NONE:
-				return matchCount == 0;
-			default:
-				return false;
-		}
+		ItemContainer container = containerProvider.apply(containerType);
+		return snapshot.validate(container, itemNameLookup);
 	}
 
 	/**
-	 * Convert a legacy ItemProfile to the new ProfileState format
-	 *
-	 * @param legacy the legacy ItemProfile
-	 * @return a new ProfileState
+	 * Get the number of tracked items in this profile
 	 */
-	public static ProfileState fromLegacyItemProfile(ItemProfile legacy)
+	public int getItemCount()
 	{
-		ProfileState state = new ProfileState();
-		state.name = legacy.getName();
-		state.enabled = legacy.isEnabled();
-
-		// Map legacy validation modes
-		switch (legacy.getValidationMode())
-		{
-			case ALL:
-				state.validationMode = ValidationMode.ALL;
-				break;
-			case ANY:
-				state.validationMode = ValidationMode.ANY;
-				break;
-			case NONE:
-				state.validationMode = ValidationMode.NONE;
-				break;
-		}
-
-		// Convert legacy tracked items to inventory snapshot
-		if (!legacy.getTrackedItems().isEmpty())
-		{
-			ContainerSnapshot inventorySnapshot = new ContainerSnapshot(ContainerType.INVENTORY);
-
-			for (TrackedItem legacyItem : legacy.getTrackedItems())
-			{
-				TrackedItemState itemState = TrackedItemState.fromLegacyTrackedItem(legacyItem);
-				inventorySnapshot.addItemState(itemState);
-			}
-
-			state.setContainerSnapshot(ContainerType.INVENTORY, inventorySnapshot);
-		}
-
-		return state;
+		return snapshot != null ? snapshot.getItemCount() : 0;
 	}
 
 	/**
-	 * Get the total number of tracked items across all containers
+	 * Get display name with container type
 	 */
-	public int getTotalTrackedItemCount()
+	public String getDisplayName()
 	{
-		int total = 0;
-		for (ContainerSnapshot snapshot : containerSnapshots.values())
-		{
-			total += snapshot.getItemCount();
-		}
-		return total;
-	}
-
-	/**
-	 * Clear all container snapshots
-	 */
-	public void clearAllSnapshots()
-	{
-		containerSnapshots.clear();
+		return name + " (" + containerType.getDisplayName() + ")";
 	}
 }
