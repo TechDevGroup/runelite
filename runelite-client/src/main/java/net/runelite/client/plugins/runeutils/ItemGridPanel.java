@@ -60,7 +60,7 @@ public class ItemGridPanel extends JPanel
 	{
 		int slotCount = getGridCapacity();
 
-		// Create slots lazily
+		// Create slots
 		for (int i = 0; i < slotCount; i++)
 		{
 			ItemSlotBox slotBox = new ItemSlotBox(itemManager, this, i);
@@ -68,31 +68,20 @@ public class ItemGridPanel extends JPanel
 			add(slotBox);
 		}
 
-		setPreferredSize(calculatePreferredSize());
+		// Only set preferred size for bank (needs scrolling)
+		// Other containers will expand to fill available space
+		if (containerType == ContainerType.BANK)
+		{
+			setPreferredSize(calculateMinimumSize());
+		}
 	}
 
-	private Dimension calculatePreferredSize()
+	private Dimension calculateMinimumSize()
 	{
 		int slotSize = 36; // ItemSlotBox.SLOT_SIZE
 		int gap = 1;
-
-		int cols = containerType == ContainerType.BANK ? 8 : (containerType == ContainerType.EQUIPMENT ? 2 : 4);
-		int rows;
-		switch (containerType)
-		{
-			case INVENTORY:
-				rows = 7;
-				break;
-			case EQUIPMENT:
-				rows = 7;
-				break;
-			case BANK:
-				rows = 13;
-				break;
-			default:
-				rows = 7;
-				break;
-		}
+		int cols = 8;
+		int rows = 13;
 
 		int width = (slotSize + gap) * cols + gap;
 		int height = (slotSize + gap) * rows + gap;

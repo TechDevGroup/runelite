@@ -148,9 +148,11 @@ public class ProfileCardPanel extends JPanel
 			}
 			else
 			{
-				JPanel wrapperPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
+				// Use BorderLayout.CENTER to let the grid fill available space
+				JPanel wrapperPanel = new JPanel(new BorderLayout());
 				wrapperPanel.setBackground(ColorScheme.DARK_GRAY_COLOR);
-				wrapperPanel.add(gridPanel);
+				wrapperPanel.setBorder(new EmptyBorder(10, 10, 10, 10));
+				wrapperPanel.add(gridPanel, BorderLayout.CENTER);
 				tabbedPane.addTab(containerType.name(), wrapperPanel);
 			}
 		}
