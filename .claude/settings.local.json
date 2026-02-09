@@ -1,0 +1,32 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gh repo fork:*)",
+      "Bash(gh repo view:*)",
+      "Bash(./gradlew tasks:*)",
+      "Bash(where:*)",
+      "Bash(reg query:*)",
+      "Bash(findstr:*)",
+      "Bash(choco list:*)",
+      "Bash(choco install:*)",
+      "Bash(powershell:*)",
+      "Bash(dir \"%USERPROFILE%\\\\.jdks\")",
+      "Bash(dir \"%LOCALAPPDATA%\\\\Programs\")",
+      "Bash(curl:*)",
+      "Bash(.jdk/jdk-11.0.30+7/bin/java:*)",
+      "Bash(export PATH=\"$JAVA_HOME/bin:$PATH\")",
+      "Bash(./gradlew:*)",
+      "Bash(java:*)",
+      "WebFetch(domain:github.com)",
+      "Bash(taskkill:*)",
+      "Bash(tasklist:*)",
+      "Bash(../.jdk/jdk-11.0.30+7/bin/java:*)",
+      "Bash(/c/Users/TheLando/development/runelight-spaces/.jdk/jdk-11.0.30+7/bin/java:*)",
+      "Bash(chmod:*)",
+      "Bash(./.claude/command-automation-skill/scripts/rebuild.sh:*)",
+      "Bash(xargs basename:*)",
+      "Bash(./gradlew.bat :runelite-client:classes:*)",
+      "Bash(bash:*)"
+    ]
+  }
+}
