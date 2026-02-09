@@ -108,4 +108,60 @@ public interface RuneUtilsConfig extends Config
 	{
 		return Color.YELLOW;
 	}
+
+	@ConfigItem(
+		keyName = "slotMatchColor",
+		name = "Slot Match Color",
+		description = "Color for inventory slots that match profile requirements",
+		section = inventorySection,
+		position = 3
+	)
+	default Color slotMatchColor()
+	{
+		return new Color(0, 255, 0, 80);
+	}
+
+	@ConfigItem(
+		keyName = "slotMismatchColor",
+		name = "Slot Mismatch Color",
+		description = "Color for inventory slots that don't match profile requirements",
+		section = inventorySection,
+		position = 4
+	)
+	default Color slotMismatchColor()
+	{
+		return new Color(255, 0, 0, 80);
+	}
+
+	@ConfigItem(
+		keyName = "slotSelectionColor",
+		name = "Slot Selection Color",
+		description = "Color for slot selection mode overlay",
+		section = inventorySection,
+		position = 5
+	)
+	default Color slotSelectionColor()
+	{
+		return new Color(255, 255, 0, 120);
+	}
+
+	// Profile persistence (hidden from UI)
+	@ConfigItem(
+		keyName = "profilesData",
+		name = "",
+		description = "",
+		hidden = true
+	)
+	default String profilesData()
+	{
+		return "[]";
+	}
+
+	@ConfigItem(
+		keyName = "profilesData",
+		name = "",
+		description = "",
+		hidden = true
+	)
+	void setProfilesData(String profilesJson);
 }

@@ -1,6 +1,10 @@
 package net.runelite.client.plugins.runeutils;
 
+import com.google.gson.Gson;
+import com.google.gson.reflect.TypeToken;
 import com.google.inject.Provides;
+import java.lang.reflect.Type;
+import java.util.ArrayList;
 import java.util.function.Function;
 import javax.inject.Inject;
 import javax.inject.Singleton;
@@ -16,6 +20,9 @@ import net.runelite.api.MenuEntry;
 import net.runelite.api.events.MenuOpened;
 import net.runelite.api.events.PostMenuSort;
 import net.runelite.api.events.ItemContainerChanged;
+import net.runelite.client.input.MouseListener;
+import net.runelite.client.input.MouseManager;
+import java.awt.event.MouseEvent;
 import net.runelite.api.gameval.InterfaceID;
 import net.runelite.api.widgets.ComponentID;
 import net.runelite.api.widgets.Widget;
@@ -66,8 +73,67 @@ public class RuneUtilsPlugin extends Plugin
 	@Inject
 	private ItemManager itemManager;
 
+	@Inject
+	private ConfigManager configManager;
+
+	@Inject
+	private MouseManager mouseManager;
+
 	private NavigationButton navButton;
 	private RuneUtilsOverlay inventoryOverlay;
+	private final Gson gson = new Gson();
+	private final SlotSelectionState slotSelectionState = new SlotSelectionState();
+	private final MouseListener mouseListener = new MouseListener()
+	{
+		@Override
+		public MouseEvent mouseClicked(MouseEvent event)
+		{
+			if (slotSelectionState.isActive() && event.getButton() == MouseEvent.BUTTON1)
+			{
+				if (inventoryOverlay != null)
+				{
+					inventoryOverlay.handleClick(event.getX(), event.getY());
+				}
+			}
+			return event;
+		}
+
+		@Override
+		public MouseEvent mousePressed(MouseEvent event)
+		{
+			return event;
+		}
+
+		@Override
+		public MouseEvent mouseReleased(MouseEvent event)
+		{
+			return event;
+		}
+
+		@Override
+		public MouseEvent mouseEntered(MouseEvent event)
+		{
+			return event;
+		}
+
+		@Override
+		public MouseEvent mouseExited(MouseEvent event)
+		{
+			return event;
+		}
+
+		@Override
+		public MouseEvent mouseDragged(MouseEvent event)
+		{
+			return event;
+		}
+
+		@Override
+		public MouseEvent mouseMoved(MouseEvent event)
+		{
+			return event;
+		}
+	};
 
 	@Provides
 	RuneUtilsConfig provideConfig(ConfigManager configManager)
@@ -80,6 +146,10 @@ public class RuneUtilsPlugin extends Plugin
 	{
 		log.info("Rune Utils started!");
 
+		// Set up panel references
+		panel.setPlugin(this);
+		panel.setSaveCallback(this::saveProfiles);
+
 		// Add sidebar panel
 		navButton = NavigationButton.builder()
 			.tooltip("Rune Utils")
@@ -91,8 +161,14 @@ public class RuneUtilsPlugin extends Plugin
 		clientToolbar.addNavigation(navButton);
 
 		// Create and register inventory overlay
-		inventoryOverlay = new RuneUtilsOverlay(client, this, panel, config);
+		inventoryOverlay = new RuneUtilsOverlay(client, this, panel, config, slotSelectionState, itemManager);
 		overlayManager.add(inventoryOverlay);
+
+		// Load saved profiles
+		loadProfiles();
+
+		// Register mouse listener for slot selection
+		mouseManager.registerMouseListener(mouseListener);
 
 		panel.log("Plugin started successfully");
 	}
@@ -115,6 +191,9 @@ public class RuneUtilsPlugin extends Plugin
 			overlayManager.remove(inventoryOverlay);
 			inventoryOverlay = null;
 		}
+
+		// Unregister mouse listener
+		mouseManager.unregisterMouseListener(mouseListener);
 	}
 
 	@Subscribe
@@ -251,6 +330,19 @@ public class RuneUtilsPlugin extends Plugin
 			if ((option.equals("Drop") || option.equals("Use") || option.startsWith("Withdraw-"))
 				&& !entry.getTarget().isEmpty())
 			{
+				// Add "Add to Profile" options for each existing compatible profile
+				java.util.List<ProfileState> compatibleProfiles = getCompatibleProfiles(entry);
+				for (ProfileState profile : compatibleProfiles)
+				{
+					client.createMenuEntry(0)
+						.setOption("Add to: " + profile.getName())
+						.setTarget(entry.getTarget())
+						.setParam0(entry.getParam0())
+						.setParam1(entry.getParam1())
+						.setType(MenuAction.RUNELITE)
+						.onClick(e -> handleAddToProfile(e, profile));
+				}
+
 				// Create a new menu entry for "Create Profile" at the bottom (index 0)
 				// Using index 0 makes it appear last in the menu (menus are built bottom-up)
 				client.createMenuEntry(0)
@@ -334,21 +426,126 @@ public class RuneUtilsPlugin extends Plugin
 			itemName = "Unknown Item";
 		}
 
-		// Create profile for this specific container
+		// Create profile for this specific container with only the clicked item
 		ProfileState profile = new ProfileState(itemName + " Profile", containerType);
 
-		// Capture snapshot of this container
-		Function<Integer, String> itemNameLookup = getItemNameLookup();
-		ContainerSnapshot snapshot = ContainerSnapshot.captureFromContainer(
-			containerType,
-			container,
-			itemNameLookup
-		);
+		// Create empty snapshot and add only the clicked item
+		ContainerSnapshot snapshot = new ContainerSnapshot(containerType);
+		TrackedItemState itemState = new TrackedItemState(item.getId(), itemName);
+		itemState.setQuantity(item.getQuantity());
+		itemState.setQuantityMax(item.getQuantity());
+		itemState.setQuantityCondition(QuantityCondition.ANY);
+
+		// Add item without position requirement (position-agnostic)
+		snapshot.addItemState(itemState);
 		profile.setSnapshot(snapshot);
 
 		// Add to panel
 		panel.addProfileState(profile);
 		panel.log("Created " + containerType.getDisplayName() + " profile: " + profile.getName());
+	}
+
+	/**
+	 * Get profiles compatible with the menu entry's container type
+	 */
+	private java.util.List<ProfileState> getCompatibleProfiles(MenuEntry entry)
+	{
+		ContainerType containerType = determineContainerType(entry);
+		if (containerType == null)
+		{
+			return java.util.Collections.emptyList();
+		}
+
+		return panel.getProfileStates().stream()
+			.filter(p -> p.getContainerType() == containerType)
+			.collect(java.util.stream.Collectors.toList());
+	}
+
+	/**
+	 * Determine container type from menu entry
+	 */
+	private ContainerType determineContainerType(MenuEntry entry)
+	{
+		ItemContainer inv = client.getItemContainer(InventoryID.INVENTORY);
+		ItemContainer bank = client.getItemContainer(InventoryID.BANK);
+
+		int slot = entry.getParam0();
+
+		// Try inventory first
+		if (inv != null && slot >= 0 && slot < inv.size())
+		{
+			Item item = inv.getItems()[slot];
+			if (item != null && item.getId() != -1)
+			{
+				return ContainerType.INVENTORY;
+			}
+		}
+
+		// Try bank if inventory didn't match
+		if (bank != null && slot >= 0 && slot < bank.size())
+		{
+			Item item = bank.getItems()[slot];
+			if (item != null && item.getId() != -1)
+			{
+				return ContainerType.BANK;
+			}
+		}
+
+		return null;
+	}
+
+	/**
+	 * Handle adding item to an existing profile
+	 */
+	private void handleAddToProfile(MenuEntry entry, ProfileState profile)
+	{
+		ContainerType containerType = profile.getContainerType();
+		ItemContainer container = client.getItemContainer(containerType.getInventoryId());
+
+		if (container == null)
+		{
+			log.warn("Container not available for profile");
+			return;
+		}
+
+		int slot = entry.getParam0();
+		if (slot < 0 || slot >= container.size())
+		{
+			return;
+		}
+
+		Item item = container.getItems()[slot];
+		if (item == null || item.getId() == -1)
+		{
+			return;
+		}
+
+		// Get item name
+		String itemName = itemManager.getItemComposition(item.getId()).getName();
+		if (itemName == null)
+		{
+			itemName = "Unknown Item";
+		}
+
+		// Add item to existing profile's snapshot
+		ContainerSnapshot snapshot = profile.getSnapshot();
+		if (snapshot == null)
+		{
+			snapshot = new ContainerSnapshot(containerType);
+			profile.setSnapshot(snapshot);
+		}
+
+		TrackedItemState itemState = new TrackedItemState(item.getId(), itemName);
+		itemState.setQuantity(item.getQuantity());
+		itemState.setQuantityMax(item.getQuantity());
+		itemState.setQuantityCondition(QuantityCondition.ANY);
+
+		// Add item without position requirement (position-agnostic)
+		snapshot.addItemState(itemState);
+
+		// Refresh UI to show the newly added item
+		panel.rebuild();
+		panel.log("Added " + itemName + " to profile: " + profile.getName());
 	}
 
 	/**
@@ -376,5 +573,59 @@ public class RuneUtilsPlugin extends Plugin
 			}
 			return client.getItemContainer(type.getInventoryId());
 		};
+	}
+
+	/**
+	 * Get the slot selection state manager
+	 */
+	public SlotSelectionState getSlotSelectionState()
+	{
+		return slotSelectionState;
+	}
+
+	/**
+	 * Save profiles to config
+	 */
+	public void saveProfiles()
+	{
+		try
+		{
+			java.util.List<ProfileState> profiles = panel.getProfileStates();
+			String json = gson.toJson(profiles);
+			configManager.setConfiguration("runeutils", "profilesData", json);
+			log.debug("Saved {} profiles", profiles.size());
+		}
+		catch (Exception e)
+		{
+			log.error("Failed to save profiles", e);
+		}
+	}
+
+	/**
+	 * Load profiles from config
+	 */
+	private void loadProfiles()
+	{
+		try
+		{
+			String json = configManager.getConfiguration("runeutils", "profilesData");
+			if (json != null && !json.isEmpty() && !json.equals("[]"))
+			{
+				Type listType = new TypeToken<ArrayList<ProfileState>>(){}.getType();
+				java.util.List<ProfileState> profiles = gson.fromJson(json, listType);
+				if (profiles != null)
+				{
+					for (ProfileState profile : profiles)
+					{
+						panel.addProfileState(profile);
+					}
+					log.info("Loaded {} profiles", profiles.size());
+				}
+			}
+		}
+		catch (Exception e)
+		{
+			log.error("Failed to load profiles", e);
+		}
 	}
 }

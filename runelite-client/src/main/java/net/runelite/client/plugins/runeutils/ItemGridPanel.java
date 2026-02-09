@@ -53,6 +53,7 @@ public class ItemGridPanel extends JPanel
 				break;
 		}
 
+		// Use GridLayout with fixed 36px slot sizes
 		setLayout(new GridLayout(rows, cols, 1, 1));
 	}
 
@@ -67,25 +68,6 @@ public class ItemGridPanel extends JPanel
 			slots.add(slotBox);
 			add(slotBox);
 		}
-
-		// Only set preferred size for bank (needs scrolling)
-		// Other containers will expand to fill available space
-		if (containerType == ContainerType.BANK)
-		{
-			setPreferredSize(calculateMinimumSize());
-		}
-	}
-
-	private Dimension calculateMinimumSize()
-	{
-		int slotSize = 36; // ItemSlotBox.SLOT_SIZE
-		int gap = 1;
-		int cols = 8;
-		int rows = 13;
-
-		int width = (slotSize + gap) * cols + gap;
-		int height = (slotSize + gap) * rows + gap;
-		return new Dimension(width, height);
 	}
 
 	private int getGridCapacity()
@@ -116,12 +98,14 @@ public class ItemGridPanel extends JPanel
 
 	public void refresh()
 	{
+		// Always clear all slots first
+		for (ItemSlotBox slot : slots)
+		{
+			slot.setItemState(null);
+		}
+
 		if (snapshot == null)
 		{
-			for (ItemSlotBox slot : slots)
-			{
-				slot.setItemState(null);
-			}
 			return;
 		}
 

@@ -14,6 +14,7 @@ public class ProfileState
 	private ContainerType containerType = ContainerType.INVENTORY;
 	private ContainerSnapshot snapshot;
 	private boolean enabled = true;
+	private boolean collapsed = false;
 
 	public ProfileState()
 	{

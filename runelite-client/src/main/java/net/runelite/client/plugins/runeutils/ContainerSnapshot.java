@@ -38,11 +38,18 @@ public class ContainerSnapshot
 
 	/**
 	 * Add an item state without position requirement
+	 * If an item with the same ID already exists, this is a no-op (idempotent)
 	 *
 	 * @param itemState the item state
 	 */
 	public void addItemState(TrackedItemState itemState)
 	{
+		// Check if item ID already exists - if so, no-op (idempotent)
+		if (hasItemId(itemState.getItemId()))
+		{
+			return;
+		}
+
 		// Use negative slot counter for position-agnostic items
 		int negativeSlot = -1;
 		while (slotStates.containsKey(negativeSlot))
@@ -51,6 +58,23 @@ public class ContainerSnapshot
 		}
 		itemState.setSlot(negativeSlot);
 		slotStates.put(negativeSlot, itemState);
+	}
+
+	/**
+	 * Check if an item ID already exists in this snapshot
+	 */
+	public boolean hasItemId(int itemId)
+	{
+		return slotStates.values().stream()
+			.anyMatch(state -> state.getItemId() == itemId);
+	}
+
+	/**
+	 * Remove an item by its item ID
+	 */
+	public void removeItemByItemId(int itemId)
+	{
+		slotStates.entrySet().removeIf(entry -> entry.getValue().getItemId() == itemId);
 	}
 
 	/**

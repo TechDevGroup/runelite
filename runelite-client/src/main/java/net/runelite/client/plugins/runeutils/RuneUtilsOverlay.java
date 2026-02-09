@@ -25,16 +25,21 @@ public class RuneUtilsOverlay extends Overlay
 	private final RuneUtilsPlugin plugin;
 	private final RuneUtilsPanel panel;
 	private final RuneUtilsConfig config;
+	private final SlotSelectionState slotSelectionState;
+	private final ItemManager itemManager;
 
-	@Inject
-	private ItemManager itemManager;
+	// Debug output deduplication - tracks state across render calls
+	private boolean lastWasSlotSelection = false;
+	private boolean lastHadInventory = false;
 
-	public RuneUtilsOverlay(Client client, RuneUtilsPlugin plugin, RuneUtilsPanel panel, RuneUtilsConfig config)
+	public RuneUtilsOverlay(Client client, RuneUtilsPlugin plugin, RuneUtilsPanel panel, RuneUtilsConfig config, SlotSelectionState slotSelectionState, ItemManager itemManager)
 	{
 		this.client = client;
 		this.plugin = plugin;
 		this.panel = panel;
 		this.config = config;
+		this.slotSelectionState = slotSelectionState;
+		this.itemManager = itemManager;
 		setPosition(OverlayPosition.DYNAMIC);
 		setLayer(OverlayLayer.ABOVE_WIDGETS);
 	}
@@ -57,6 +62,11 @@ public class RuneUtilsOverlay extends Overlay
 		ItemContainer inventory = client.getItemContainer(InventoryID.INVENTORY);
 		if (inventory == null)
 		{
+			if (lastHadInventory)
+			{
+				System.out.println("[Overlay] Inventory closed");
+				lastHadInventory = false;
+			}
 			return null;
 		}
 
@@ -73,121 +83,230 @@ public class RuneUtilsOverlay extends Overlay
 			return null;
 		}
 
-		// Calculate slot dimensions
-		Rectangle bounds = inventoryWidget.getBounds();
-		int columns = 4;
-		int rows = 7;
-		int slotWidth = bounds.width / columns;
-		int slotHeight = bounds.height / rows;
-
-		// Get colors from config
-		Color fillColor = config.highlightColor();
-		Color borderColor = config.highlightBorderColor();
-
-		// Iterate through items and highlight matches
-		for (int i = 0; i < Math.min(items.length, 28); i++)
+		// Get individual slot widgets (each slot is a child widget with its own bounds)
+		Widget[] slotWidgets = inventoryWidget.getChildren();
+		if (slotWidgets == null || slotWidgets.length < 28)
 		{
-			Item item = items[i];
-			if (item == null || item.getId() == -1)
-			{
-				continue;
-			}
-
-			// Get item details
-			int itemId = item.getId();
-			var itemComposition = itemManager.getItemComposition(itemId);
-			if (itemComposition == null)
-			{
-				continue;
-			}
-			String itemName = itemComposition.getName();
-			if (itemName == null)
-			{
-				continue;
-			}
-
-			// Check if item matches any profile (legacy)
-			boolean matchesLegacy = false;
-			for (ItemProfile profile : panel.getProfiles())
-			{
-				if (profile.matches(itemId, itemName))
-				{
-					matchesLegacy = true;
-					break;
-				}
-			}
-
-			// Check if item matches any ProfileState
-			boolean matchesProfileState = matchesProfileState(itemId, itemName, item.getQuantity(), i);
-
-			if (matchesLegacy || matchesProfileState)
-			{
-				// Calculate slot position
-				int col = i % columns;
-				int row = i / columns;
-				int x = bounds.x + (col * slotWidth);
-				int y = bounds.y + (row * slotHeight);
-
-				// Draw highlight
-				graphics.setColor(fillColor);
-				graphics.fillRect(x, y, slotWidth, slotHeight);
-
-				// Draw border
-				graphics.setColor(borderColor);
-				graphics.setStroke(new BasicStroke(2));
-				graphics.drawRect(x, y, slotWidth, slotHeight);
-			}
+			return null;
 		}
+
+		lastHadInventory = true;
+
+		// Check if we're in slot selection mode
+		if (slotSelectionState.isActive())
+		{
+			if (!lastWasSlotSelection)
+			{
+				System.out.println("[Overlay] Slot selection mode activated");
+				lastWasSlotSelection = true;
+			}
+			// Draw slot selection overlays (clickable, not click-through)
+			renderSlotSelection(graphics, slotWidgets);
+			return null;
+		}
+		else if (lastWasSlotSelection)
+		{
+			System.out.println("[Overlay] Slot selection mode deactivated");
+			lastWasSlotSelection = false;
+		}
+
+		// Draw status overlays (click-through) - shows match/mismatch for profile items
+		renderSlotStatus(graphics, slotWidgets, items);
 
 		return null;
-	}
-
-	/**
-	 * Check if item matches any ProfileState
-	 */
-	private boolean matchesProfileState(int itemId, String itemName, int quantity, int slot)
-	{
-		for (ProfileState profile : panel.getProfileStates())
-		{
-			if (!profile.isEnabled())
-			{
-				continue;
-			}
-
-			// Only check inventory profiles
-			if (profile.getContainerType() != ContainerType.INVENTORY)
-			{
-				continue;
-			}
-
-			ContainerSnapshot snapshot = profile.getSnapshot();
-			if (snapshot == null)
-			{
-				continue;
-			}
-
-			// Check position-specific items
-			TrackedItemState positionState = snapshot.getPositionSpecificStates().get(slot);
-			if (positionState != null && positionState.matches(itemId, itemName, quantity, slot))
-			{
-				return true;
-			}
-
-			// Check position-agnostic items
-			for (TrackedItemState state : snapshot.getPositionAgnosticStates().values())
-			{
-				if (state.matches(itemId, itemName, quantity, null))
-				{
-					return true;
-				}
-			}
-		}
-
-		return false;
 	}
 
 	public void onInventoryChanged()
 	{
 		// Can be used for additional processing when inventory changes
+	}
+
+	/**
+	 * Draw slot selection overlays when in selection mode
+	 */
+	private void renderSlotSelection(Graphics2D graphics, Widget[] slotWidgets)
+	{
+		Color selectionColor = config.slotSelectionColor();
+
+		for (int i = 0; i < Math.min(slotWidgets.length, 28); i++)
+		{
+			Widget slotWidget = slotWidgets[i];
+			if (slotWidget == null)
+			{
+				continue;
+			}
+
+			Rectangle slotBounds = slotWidget.getBounds();
+
+			// Draw selection overlay
+			graphics.setColor(selectionColor);
+			graphics.fillRect(slotBounds.x, slotBounds.y, slotBounds.width, slotBounds.height);
+
+			// Draw border
+			graphics.setColor(Color.WHITE);
+			graphics.setStroke(new BasicStroke(2));
+			graphics.drawRect(slotBounds.x, slotBounds.y, slotBounds.width, slotBounds.height);
+
+			// Draw slot number
+			graphics.setColor(Color.BLACK);
+			String slotText = String.valueOf(i + 1);
+			graphics.drawString(slotText, slotBounds.x + slotBounds.width / 2 - 5, slotBounds.y + slotBounds.height / 2 + 5);
+		}
+	}
+
+	/**
+	 * Draw status overlays showing match/mismatch for profile items
+	 */
+	private void renderSlotStatus(Graphics2D graphics, Widget[] slotWidgets, Item[] items)
+	{
+		Color matchColor = config.slotMatchColor();
+		Color mismatchColor = config.slotMismatchColor();
+
+		for (int i = 0; i < Math.min(items.length, 28); i++)
+		{
+			Item item = items[i];
+			Widget slotWidget = slotWidgets[i];
+			if (slotWidget == null)
+			{
+				continue;
+			}
+
+			Rectangle slotBounds = slotWidget.getBounds();
+
+			// Check if this slot/item matches any enabled profile
+			boolean shouldHighlight = false;
+			boolean isCorrect = false;
+
+			if (item != null && item.getId() != -1)
+			{
+				var itemComposition = itemManager.getItemComposition(item.getId());
+				if (itemComposition != null)
+				{
+					String itemName = itemComposition.getName();
+
+					for (ProfileState profile : panel.getProfileStates())
+					{
+						if (!profile.isEnabled() || profile.getContainerType() != ContainerType.INVENTORY)
+						{
+							continue;
+						}
+
+						ContainerSnapshot snapshot = profile.getSnapshot();
+						if (snapshot == null)
+						{
+							continue;
+						}
+
+						// Check position-specific items (must be in exact slot)
+						TrackedItemState positionState = snapshot.getPositionSpecificStates().get(i);
+						if (positionState != null)
+						{
+							shouldHighlight = true;
+							if (positionState.matches(item.getId(), itemName, item.getQuantity(), i))
+							{
+								isCorrect = true;
+							}
+							break; // Found a position-specific requirement for this slot
+						}
+
+						// Check position-agnostic items (can be in any slot)
+						for (TrackedItemState agnosticState : snapshot.getPositionAgnosticStates().values())
+						{
+							if (agnosticState.matches(item.getId(), itemName, item.getQuantity(), null))
+							{
+								shouldHighlight = true;
+								isCorrect = true;
+								break;
+							}
+						}
+
+						if (shouldHighlight)
+						{
+							break;
+						}
+					}
+				}
+			}
+			else
+			{
+				// Empty slot - check if any profile requires something here
+				for (ProfileState profile : panel.getProfileStates())
+				{
+					if (!profile.isEnabled() || profile.getContainerType() != ContainerType.INVENTORY)
+					{
+						continue;
+					}
+
+					ContainerSnapshot snapshot = profile.getSnapshot();
+					if (snapshot == null)
+					{
+						continue;
+					}
+
+					// Check if this slot is required by profile (position-specific)
+					TrackedItemState requiredState = snapshot.getPositionSpecificStates().get(i);
+					if (requiredState != null)
+					{
+						shouldHighlight = true;
+						isCorrect = false; // Item is missing
+						break;
+					}
+				}
+			}
+
+			// Draw overlay based on status
+			if (shouldHighlight)
+			{
+				if (isCorrect)
+				{
+					graphics.setColor(matchColor);
+				}
+				else
+				{
+					graphics.setColor(mismatchColor);
+				}
+				graphics.fillRect(slotBounds.x, slotBounds.y, slotBounds.width, slotBounds.height);
+			}
+		}
+	}
+
+	/**
+	 * Handle mouse clicks for slot selection
+	 */
+	public void handleClick(int mouseX, int mouseY)
+	{
+		if (!slotSelectionState.isActive())
+		{
+			return;
+		}
+
+		Widget inventoryWidget = client.getWidget(149, 0);
+		if (inventoryWidget == null)
+		{
+			return;
+		}
+
+		Widget[] slotWidgets = inventoryWidget.getChildren();
+		if (slotWidgets == null || slotWidgets.length < 28)
+		{
+			return;
+		}
+
+		// Check which slot was clicked by checking bounds of each slot widget
+		for (int i = 0; i < Math.min(slotWidgets.length, 28); i++)
+		{
+			Widget slotWidget = slotWidgets[i];
+			if (slotWidget == null)
+			{
+				continue;
+			}
+
+			Rectangle slotBounds = slotWidget.getBounds();
+			if (slotBounds.contains(mouseX, mouseY))
+			{
+				slotSelectionState.selectSlot(i);
+				return;
+			}
+		}
 	}
 }

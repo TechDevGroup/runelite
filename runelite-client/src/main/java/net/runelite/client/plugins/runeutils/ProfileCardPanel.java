@@ -34,10 +34,7 @@ public class ProfileCardPanel extends JPanel
 
 		setLayout(new BoxLayout(this, BoxLayout.Y_AXIS));
 		setBackground(ColorScheme.DARKER_GRAY_COLOR);
-		setBorder(BorderFactory.createCompoundBorder(
-			BorderFactory.createLineBorder(ColorScheme.DARK_GRAY_COLOR, 1),
-			new EmptyBorder(5, 5, 5, 5)
-		));
+		setBorder(BorderFactory.createLineBorder(ColorScheme.DARK_GRAY_COLOR, 1));
 
 		add(buildHeaderPanel());
 		contentPanel = buildContentPanel();
@@ -49,22 +46,24 @@ public class ProfileCardPanel extends JPanel
 	private JPanel buildHeaderPanel()
 	{
 		JPanel headerPanel = new JPanel();
-		headerPanel.setLayout(new BorderLayout(5, 0));
+		headerPanel.setLayout(new BorderLayout(2, 0));
 		headerPanel.setBackground(ColorScheme.DARKER_GRAY_COLOR);
-		headerPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 30));
+		headerPanel.setBorder(new EmptyBorder(3, 3, 3, 3));
 
-		JPanel leftPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
+		JPanel leftPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 2, 0));
 		leftPanel.setBackground(ColorScheme.DARKER_GRAY_COLOR);
 
 		toggleButton = new JButton(EXPAND_ICON);
 		toggleButton.setFont(FontManager.getRunescapeSmallFont());
 		toggleButton.setFocusPainted(false);
-		toggleButton.setPreferredSize(new Dimension(30, 25));
+		toggleButton.setPreferredSize(new Dimension(20, 20));
 		toggleButton.addActionListener(e -> toggleExpanded());
 		leftPanel.add(toggleButton);
 
-		nameLabel = new JLabel(profile.getDisplayName());
-		nameLabel.setFont(FontManager.getRunescapeBoldFont());
+		// Use HTML for text wrapping in label
+		String displayName = profile.getDisplayName();
+		nameLabel = new JLabel("<html><div style='width:100px'>" + displayName + "</div></html>");
+		nameLabel.setFont(FontManager.getRunescapeSmallFont());
 		nameLabel.setForeground(Color.WHITE);
 		nameLabel.addMouseListener(new java.awt.event.MouseAdapter()
 		{
@@ -84,26 +83,26 @@ public class ProfileCardPanel extends JPanel
 		itemCountLabel.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
 		leftPanel.add(itemCountLabel);
 
-		JPanel rightPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 5, 0));
+		JPanel rightPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 2, 0));
 		rightPanel.setBackground(ColorScheme.DARKER_GRAY_COLOR);
 
-		enableButton = new JToggleButton(profile.isEnabled() ? "Enabled" : "Disabled");
+		enableButton = new JToggleButton(profile.isEnabled() ? "On" : "Off");
 		enableButton.setSelected(profile.isEnabled());
 		enableButton.setFont(FontManager.getRunescapeSmallFont());
 		enableButton.setFocusPainted(false);
-		enableButton.setPreferredSize(new Dimension(80, 25));
+		enableButton.setPreferredSize(new Dimension(40, 20));
 		enableButton.addActionListener(e -> {
 			profile.setEnabled(enableButton.isSelected());
-			enableButton.setText(profile.isEnabled() ? "Enabled" : "Disabled");
+			enableButton.setText(profile.isEnabled() ? "On" : "Off");
 			notifyDataChanged();
 		});
 		rightPanel.add(enableButton);
 
-		JButton deleteButton = new JButton("Delete");
+		JButton deleteButton = new JButton("X");
 		deleteButton.setFont(FontManager.getRunescapeSmallFont());
 		deleteButton.setForeground(Color.RED);
 		deleteButton.setFocusPainted(false);
-		deleteButton.setPreferredSize(new Dimension(70, 25));
+		deleteButton.setPreferredSize(new Dimension(20, 20));
 		deleteButton.addActionListener(e -> confirmDelete());
 		rightPanel.add(deleteButton);
 
@@ -117,7 +116,6 @@ public class ProfileCardPanel extends JPanel
 	{
 		JPanel panel = new JPanel(new BorderLayout());
 		panel.setBackground(ColorScheme.DARK_GRAY_COLOR);
-		panel.setBorder(new EmptyBorder(5, 0, 0, 0));
 
 		gridPanel = new ItemGridPanel(
 			itemManager,
@@ -137,12 +135,8 @@ public class ProfileCardPanel extends JPanel
 		}
 		else
 		{
-			// Use BorderLayout.CENTER to let the grid fill available space
-			JPanel wrapperPanel = new JPanel(new BorderLayout());
-			wrapperPanel.setBackground(ColorScheme.DARK_GRAY_COLOR);
-			wrapperPanel.setBorder(new EmptyBorder(10, 10, 10, 10));
-			wrapperPanel.add(gridPanel, BorderLayout.CENTER);
-			panel.add(wrapperPanel, BorderLayout.CENTER);
+			// Grid fills available width, SquareGridLayout handles aspect ratio
+			panel.add(gridPanel, BorderLayout.NORTH);
 		}
 
 		return panel;
@@ -169,7 +163,7 @@ public class ProfileCardPanel extends JPanel
 		if (newName != null && !newName.trim().isEmpty())
 		{
 			profile.setName(newName.trim());
-			nameLabel.setText(profile.getDisplayName());
+			nameLabel.setText("<html><div style='width:100px'>" + profile.getDisplayName() + "</div></html>");
 			notifyDataChanged();
 		}
 	}

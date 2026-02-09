@@ -9,6 +9,8 @@ import java.awt.Insets;
 import java.util.ArrayList;
 import java.util.List;
 import javax.inject.Inject;
+import javax.swing.Box;
+import javax.swing.BoxLayout;
 import javax.swing.JButton;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
@@ -29,6 +31,8 @@ public class RuneUtilsPanel extends PluginPanel
 	private final JPanel profilesContainer;
 	private final PluginErrorPanel noProfilesPanel;
 	private final ItemManager itemManager;
+	private Runnable onSaveCallback;
+	private RuneUtilsPlugin plugin;
 
 	@Inject
 	public RuneUtilsPanel(RuneUtilsConfig config, ItemManager itemManager)
@@ -40,14 +44,14 @@ public class RuneUtilsPanel extends PluginPanel
 		setLayout(new BorderLayout());
 		setBackground(ColorScheme.DARK_GRAY_COLOR);
 
-		// Header
+		// Header - no padding, anchored to edge
 		JPanel headerPanel = new JPanel(new BorderLayout());
 		headerPanel.setBackground(ColorScheme.DARKER_GRAY_COLOR);
-		headerPanel.setBorder(new EmptyBorder(10, 10, 10, 10));
 
 		JLabel title = new JLabel("Item Profiles");
 		title.setForeground(Color.WHITE);
 		title.setFont(FontManager.getRunescapeBoldFont());
+		title.setBorder(new EmptyBorder(5, 5, 5, 5));
 		headerPanel.add(title, BorderLayout.WEST);
 
 		add(headerPanel, BorderLayout.NORTH);
@@ -71,7 +75,7 @@ public class RuneUtilsPanel extends PluginPanel
 		rebuild();
 	}
 
-	private void rebuild()
+	public void rebuild()
 	{
 		profilesContainer.removeAll();
 
@@ -85,31 +89,45 @@ public class RuneUtilsPanel extends PluginPanel
 		}
 		else
 		{
-			GridBagConstraints constraints = new GridBagConstraints();
-			constraints.fill = GridBagConstraints.HORIZONTAL;
-			constraints.weightx = 1;
-			constraints.gridx = 0;
-			constraints.gridy = 0;
-			constraints.insets = new Insets(5, 5, 5, 5);
+			// Use simplified list layout
+			profilesContainer.setLayout(new BoxLayout(profilesContainer, BoxLayout.Y_AXIS));
 
-			// Add ProfileState cards using ProfileCardPanel
 			for (ProfileState profileState : profileStates)
 			{
-				ProfileCardPanel card = new ProfileCardPanel(itemManager, profileState, this::rebuild);
-				profilesContainer.add(card, constraints);
-				constraints.gridy++;
+				ProfileSection section = new ProfileSection(profileState, itemManager, this::onDataChanged, plugin);
+				profilesContainer.add(section);
 			}
 
 			// Add filler at the bottom
-			constraints.fill = GridBagConstraints.BOTH;
-			constraints.weighty = 1;
-			JPanel filler = new JPanel();
-			filler.setBackground(ColorScheme.DARK_GRAY_COLOR);
-			profilesContainer.add(filler, constraints);
+			profilesContainer.add(Box.createVerticalGlue());
 		}
 
 		profilesContainer.revalidate();
 		profilesContainer.repaint();
+	}
+
+	private void onDataChanged()
+	{
+		rebuild();
+		if (onSaveCallback != null)
+		{
+			onSaveCallback.run();
+		}
+	}
+
+	public void setSaveCallback(Runnable callback)
+	{
+		this.onSaveCallback = callback;
+	}
+
+	public void setPlugin(RuneUtilsPlugin plugin)
+	{
+		this.plugin = plugin;
+	}
+
+	public RuneUtilsPlugin getPlugin()
+	{
+		return plugin;
 	}
 
 	public void log(String message)
@@ -126,7 +144,7 @@ public class RuneUtilsPanel extends PluginPanel
 	public void addProfileState(ProfileState profile)
 	{
 		profileStates.add(profile);
-		rebuild();
+		onDataChanged();
 	}
 
 	public List<ProfileState> getProfileStates()

@@ -10,12 +10,16 @@ public class ItemContextMenu extends JPopupMenu
 	private final TrackedItemState itemState;
 	private final Consumer<TrackedItemState> onUpdate;
 	private final Runnable onRemove;
+	private final SlotSelectionState slotSelectionState;
+	private final ProfileState profile;
 
-	public ItemContextMenu(TrackedItemState itemState, Consumer<TrackedItemState> onUpdate, Runnable onRemove)
+	public ItemContextMenu(TrackedItemState itemState, Consumer<TrackedItemState> onUpdate, Runnable onRemove, SlotSelectionState slotSelectionState, ProfileState profile)
 	{
 		this.itemState = itemState;
 		this.onUpdate = onUpdate;
 		this.onRemove = onRemove;
+		this.slotSelectionState = slotSelectionState;
+		this.profile = profile;
 
 		buildMenu();
 	}
@@ -204,28 +208,55 @@ public class ItemContextMenu extends JPopupMenu
 
 	private void toggleRequirePosition(boolean require)
 	{
-		TrackedItemState updatedState = new TrackedItemState(itemState.getItemId(), itemState.getItemName());
-		updatedState.setSlot(itemState.getSlot());
-		updatedState.setQuantity(itemState.getQuantity());
-		updatedState.setQuantityMax(itemState.getQuantityMax());
-		updatedState.setQuantityCondition(itemState.getQuantityCondition());
-
-		// Copy validation flags
-		for (ValidationFlag flag : itemState.getValidationFlags())
-		{
-			updatedState.addValidationFlag(flag);
-		}
-
-		// Toggle REQUIRE_POSITION flag
+		System.out.println("[ItemContextMenu] toggleRequirePosition called with require=" + require);
 		if (require)
 		{
-			updatedState.addValidationFlag(ValidationFlag.REQUIRE_POSITION);
+			// Enter slot selection mode
+			System.out.println("[ItemContextMenu] slotSelectionState is " + (slotSelectionState != null ? "NOT NULL" : "NULL"));
+			System.out.println("[ItemContextMenu] profile is " + (profile != null ? "NOT NULL" : "NULL"));
+			if (slotSelectionState != null && profile != null)
+			{
+				System.out.println("[ItemContextMenu] Calling enterSelectionMode");
+				slotSelectionState.enterSelectionMode(itemState, profile, selectedSlot -> {
+					// User selected a slot - update the item with that slot
+					TrackedItemState updatedState = new TrackedItemState(itemState.getItemId(), itemState.getItemName());
+					updatedState.setSlot(selectedSlot);
+					updatedState.setQuantity(itemState.getQuantity());
+					updatedState.setQuantityMax(itemState.getQuantityMax());
+					updatedState.setQuantityCondition(itemState.getQuantityCondition());
+
+					// Copy validation flags
+					for (ValidationFlag flag : itemState.getValidationFlags())
+					{
+						updatedState.addValidationFlag(flag);
+					}
+
+					// Add REQUIRE_POSITION flag
+					updatedState.addValidationFlag(ValidationFlag.REQUIRE_POSITION);
+
+					onUpdate.accept(updatedState);
+				});
+			}
 		}
 		else
 		{
-			updatedState.removeValidationFlag(ValidationFlag.REQUIRE_POSITION);
-		}
+			// Remove position requirement - clear slot and remove flag
+			TrackedItemState updatedState = new TrackedItemState(itemState.getItemId(), itemState.getItemName());
+			updatedState.setSlot(null); // Clear the slot requirement
+			updatedState.setQuantity(itemState.getQuantity());
+			updatedState.setQuantityMax(itemState.getQuantityMax());
+			updatedState.setQuantityCondition(itemState.getQuantityCondition());
 
-		onUpdate.accept(updatedState);
+			// Copy validation flags except REQUIRE_POSITION
+			for (ValidationFlag flag : itemState.getValidationFlags())
+			{
+				if (flag != ValidationFlag.REQUIRE_POSITION)
+				{
+					updatedState.addValidationFlag(flag);
+				}
+			}
+
+			onUpdate.accept(updatedState);
+		}
 	}
 }
