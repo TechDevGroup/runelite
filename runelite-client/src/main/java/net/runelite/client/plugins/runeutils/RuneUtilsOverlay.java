@@ -1,27 +1,3 @@
-/*
- * Copyright (c) 2024, TechDevGroup
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
- *
- * 1. Redistributions of source code must retain the above copyright notice, this
- *    list of conditions and the following disclaimer.
- * 2. Redistributions in binary form must reproduce the above copyright notice,
- *    this list of conditions and the following disclaimer in the documentation
- *    and/or other materials provided with the distribution.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
- * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
- * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
- * DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR
- * ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
- * (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
- * ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
- * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
- * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- */
 package net.runelite.client.plugins.runeutils;
 
 import java.awt.BasicStroke;
@@ -29,14 +5,12 @@ import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.Graphics2D;
 import java.awt.Rectangle;
-import java.awt.Shape;
 import javax.inject.Inject;
 import net.runelite.api.Client;
 import net.runelite.api.InventoryID;
 import net.runelite.api.Item;
 import net.runelite.api.ItemContainer;
 import net.runelite.api.widgets.Widget;
-import net.runelite.api.widgets.WidgetItem;
 import net.runelite.client.game.ItemManager;
 import net.runelite.client.ui.overlay.Overlay;
 import net.runelite.client.ui.overlay.OverlayLayer;
@@ -50,15 +24,17 @@ public class RuneUtilsOverlay extends Overlay
 	private final Client client;
 	private final RuneUtilsPlugin plugin;
 	private final RuneUtilsPanel panel;
+	private final RuneUtilsConfig config;
 
 	@Inject
 	private ItemManager itemManager;
 
-	public RuneUtilsOverlay(Client client, RuneUtilsPlugin plugin, RuneUtilsPanel panel)
+	public RuneUtilsOverlay(Client client, RuneUtilsPlugin plugin, RuneUtilsPanel panel, RuneUtilsConfig config)
 	{
 		this.client = client;
 		this.plugin = plugin;
 		this.panel = panel;
+		this.config = config;
 		setPosition(OverlayPosition.DYNAMIC);
 		setLayer(OverlayLayer.ABOVE_WIDGETS);
 	}
@@ -66,6 +42,17 @@ public class RuneUtilsOverlay extends Overlay
 	@Override
 	public Dimension render(Graphics2D graphics)
 	{
+		if (!config.enableInventoryHighlighting())
+		{
+			return null;
+		}
+
+		// Check if itemManager is available
+		if (itemManager == null)
+		{
+			return null;
+		}
+
 		// Get inventory
 		ItemContainer inventory = client.getItemContainer(InventoryID.INVENTORY);
 		if (inventory == null)
@@ -93,6 +80,10 @@ public class RuneUtilsOverlay extends Overlay
 		int slotWidth = bounds.width / columns;
 		int slotHeight = bounds.height / rows;
 
+		// Get colors from config
+		Color fillColor = config.highlightColor();
+		Color borderColor = config.highlightBorderColor();
+
 		// Iterate through items and highlight matches
 		for (int i = 0; i < Math.min(items.length, 28); i++)
 		{
@@ -102,35 +93,91 @@ public class RuneUtilsOverlay extends Overlay
 				continue;
 			}
 
-			// Get item name
-			String itemName = itemManager.getItemComposition(item.getId()).getName();
+			// Get item details
+			int itemId = item.getId();
+			var itemComposition = itemManager.getItemComposition(itemId);
+			if (itemComposition == null)
+			{
+				continue;
+			}
+			String itemName = itemComposition.getName();
+			if (itemName == null)
+			{
+				continue;
+			}
 
-			// Check if item matches any profile
+			// Check if item matches any profile (legacy)
+			boolean matchesLegacy = false;
 			for (ItemProfile profile : panel.getProfiles())
 			{
-				if (profile.matches(itemName))
+				if (profile.matches(itemId, itemName))
 				{
-					// Calculate slot position
-					int col = i % columns;
-					int row = i / columns;
-					int x = bounds.x + (col * slotWidth);
-					int y = bounds.y + (row * slotHeight);
-
-					// Draw highlight
-					graphics.setColor(new Color(255, 255, 0, 100));
-					graphics.fillRect(x, y, slotWidth, slotHeight);
-
-					// Draw border
-					graphics.setColor(Color.YELLOW);
-					graphics.setStroke(new BasicStroke(2));
-					graphics.drawRect(x, y, slotWidth, slotHeight);
-
-					break; // Only highlight once per item
+					matchesLegacy = true;
+					break;
 				}
+			}
+
+			// Check if item matches any ProfileState
+			boolean matchesProfileState = matchesProfileState(itemId, itemName, item.getQuantity(), i);
+
+			if (matchesLegacy || matchesProfileState)
+			{
+				// Calculate slot position
+				int col = i % columns;
+				int row = i / columns;
+				int x = bounds.x + (col * slotWidth);
+				int y = bounds.y + (row * slotHeight);
+
+				// Draw highlight
+				graphics.setColor(fillColor);
+				graphics.fillRect(x, y, slotWidth, slotHeight);
+
+				// Draw border
+				graphics.setColor(borderColor);
+				graphics.setStroke(new BasicStroke(2));
+				graphics.drawRect(x, y, slotWidth, slotHeight);
 			}
 		}
 
 		return null;
+	}
+
+	/**
+	 * Check if item matches any ProfileState
+	 */
+	private boolean matchesProfileState(int itemId, String itemName, int quantity, int slot)
+	{
+		for (ProfileState profile : panel.getProfileStates())
+		{
+			if (!profile.isEnabled())
+			{
+				continue;
+			}
+
+			ContainerSnapshot invSnapshot = profile.getContainerSnapshot(ContainerType.INVENTORY);
+			if (invSnapshot == null)
+			{
+				continue;
+			}
+
+			// Check position-specific items
+			TrackedItemState positionState = invSnapshot.getPositionSpecificStates().get(slot);
+			if (positionState != null && positionState.matches(itemId, itemName, quantity, slot))
+			{
+				return true;
+			}
+
+			// Check position-agnostic items
+			for (TrackedItemState state : invSnapshot.getPositionAgnosticStates().values())
+			{
+				if (state.matches(itemId, itemName, quantity, null))
+				{
+					return true;
+				}
+			}
+		}
+
+		return false;
 	}
 
 	public void onInventoryChanged()
