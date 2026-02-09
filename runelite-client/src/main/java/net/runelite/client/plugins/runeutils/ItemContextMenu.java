@@ -58,8 +58,9 @@ public class ItemContextMenu extends JPopupMenu
 		JMenuItem removeItem = new JMenuItem("Remove from Profile");
 		removeItem.setForeground(Color.RED);
 		removeItem.addActionListener(e -> {
+			Component parentWindow = SwingUtilities.getWindowAncestor(this.getInvoker());
 			int result = JOptionPane.showConfirmDialog(
-				this,
+				parentWindow,
 				"Remove this item from the profile?",
 				"Confirm Removal",
 				JOptionPane.YES_NO_OPTION,
@@ -92,8 +93,9 @@ public class ItemContextMenu extends JPopupMenu
 				return;
 		}
 
+		Component parentWindow = SwingUtilities.getWindowAncestor(this.getInvoker());
 		String input = JOptionPane.showInputDialog(
-			this,
+			parentWindow,
 			prompt,
 			"Set Quantity",
 			JOptionPane.QUESTION_MESSAGE
@@ -111,7 +113,7 @@ public class ItemContextMenu extends JPopupMenu
 				else
 				{
 					JOptionPane.showMessageDialog(
-						this,
+						parentWindow,
 						"Quantity must be greater than 0",
 						"Invalid Input",
 						JOptionPane.ERROR_MESSAGE
@@ -121,7 +123,7 @@ public class ItemContextMenu extends JPopupMenu
 			catch (NumberFormatException ex)
 			{
 				JOptionPane.showMessageDialog(
-					this,
+					parentWindow,
 					"Please enter a valid number",
 					"Invalid Input",
 					JOptionPane.ERROR_MESSAGE
@@ -141,8 +143,9 @@ public class ItemContextMenu extends JPopupMenu
 		JTextField maxField = new JTextField(String.valueOf(itemState.getQuantityMax()));
 		panel.add(maxField);
 
+		Component parentWindow = SwingUtilities.getWindowAncestor(this.getInvoker());
 		int result = JOptionPane.showConfirmDialog(
-			this,
+			parentWindow,
 			panel,
 			"Set Quantity Range",
 			JOptionPane.OK_CANCEL_OPTION,
@@ -163,7 +166,7 @@ public class ItemContextMenu extends JPopupMenu
 				else
 				{
 					JOptionPane.showMessageDialog(
-						this,
+						parentWindow,
 						"Invalid range. Minimum must be ≤ Maximum, and both must be > 0",
 						"Invalid Input",
 						JOptionPane.ERROR_MESSAGE
@@ -173,7 +176,7 @@ public class ItemContextMenu extends JPopupMenu
 			catch (NumberFormatException ex)
 			{
 				JOptionPane.showMessageDialog(
-					this,
+					parentWindow,
 					"Please enter valid numbers",
 					"Invalid Input",
 					JOptionPane.ERROR_MESSAGE

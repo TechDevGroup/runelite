@@ -159,8 +159,9 @@ public class ProfileCardPanel extends JPanel
 
 	private void showNameEditDialog()
 	{
+		Component parentWindow = SwingUtilities.getWindowAncestor(this);
 		String newName = JOptionPane.showInputDialog(
-			this,
+			parentWindow,
 			"Enter new profile name:",
 			profile.getName()
 		);
@@ -175,8 +176,9 @@ public class ProfileCardPanel extends JPanel
 
 	private void confirmDelete()
 	{
+		Component parentWindow = SwingUtilities.getWindowAncestor(this);
 		int result = JOptionPane.showConfirmDialog(
-			this,
+			parentWindow,
 			"Are you sure you want to delete profile \"" + profile.getName() + "\"?",
 			"Confirm Delete",
 			JOptionPane.YES_NO_OPTION,
