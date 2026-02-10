@@ -62,6 +62,19 @@ public class ProfileContextMenu extends JPopupMenu
 
 		addSeparator();
 
+		// Presence mode submenu
+		JMenu presenceMenu = new JMenu("Presence Mode");
+		for (PresenceMode mode : PresenceMode.values())
+		{
+			JCheckBoxMenuItem modeItem = new JCheckBoxMenuItem(mode.getDisplayName());
+			modeItem.setSelected(profile.getPresenceMode() == mode);
+			modeItem.addActionListener(e -> handleSetPresenceMode(mode));
+			presenceMenu.add(modeItem);
+		}
+		add(presenceMenu);
+
+		addSeparator();
+
 		JCheckBoxMenuItem prioritizedItem = new JCheckBoxMenuItem("Mark as Prioritized");
 		prioritizedItem.setSelected(profile.isPrioritized());
 		prioritizedItem.addActionListener(e -> handleTogglePrioritized(prioritizedItem.isSelected()));
@@ -117,6 +130,42 @@ public class ProfileContextMenu extends JPopupMenu
 	{
 		profile.setPreviewMode(preview);
 		onUpdate.accept(profile);
+	}
+
+	private void handleSetPresenceMode(PresenceMode mode)
+	{
+		if (mode == PresenceMode.AT_LEAST_N)
+		{
+			Component parentWindow = SwingUtilities.getWindowAncestor(this.getInvoker());
+			String input = JOptionPane.showInputDialog(
+				parentWindow,
+				"How many items must match?",
+				"Presence Threshold",
+				JOptionPane.QUESTION_MESSAGE
+			);
+			if (input != null && !input.trim().isEmpty())
+			{
+				try
+				{
+					int threshold = Integer.parseInt(input.trim());
+					if (threshold > 0)
+					{
+						profile.setPresenceMode(mode);
+						profile.setPresenceThreshold(threshold);
+						onUpdate.accept(profile);
+					}
+				}
+				catch (NumberFormatException ex)
+				{
+					// Ignore invalid input
+				}
+			}
+		}
+		else
+		{
+			profile.setPresenceMode(mode);
+			onUpdate.accept(profile);
+		}
 	}
 
 	private void handleDelete()

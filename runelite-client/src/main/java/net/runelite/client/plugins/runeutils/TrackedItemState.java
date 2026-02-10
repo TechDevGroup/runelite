@@ -17,6 +17,8 @@ public class TrackedItemState
 	private int quantityMax;
 	private QuantityCondition quantityCondition = QuantityCondition.EXACT;
 	private Set<ValidationFlag> validationFlags = new HashSet<>();
+	private Set<Integer> alternateItemIds = new HashSet<>();
+	private Set<String> alternateItemNames = new HashSet<>();
 
 	public TrackedItemState(int itemId, String itemName)
 	{
@@ -25,6 +27,71 @@ public class TrackedItemState
 		this.quantity = 1;
 		this.quantityMax = 1;
 		this.slot = null;
+	}
+
+	/**
+	 * Check if this tracked state accepts the given item ID (primary or alternate)
+	 */
+	public boolean acceptsItemId(int id)
+	{
+		if (itemId == id)
+		{
+			return true;
+		}
+		Set<Integer> alts = getAlternateItemIds();
+		return alts != null && alts.contains(id);
+	}
+
+	/**
+	 * Get all accepted item IDs (primary + alternates)
+	 */
+	public Set<Integer> getAllAcceptedItemIds()
+	{
+		Set<Integer> ids = new HashSet<>();
+		ids.add(itemId);
+		Set<Integer> alts = getAlternateItemIds();
+		if (alts != null)
+		{
+			ids.addAll(alts);
+		}
+		return ids;
+	}
+
+	/**
+	 * Add an alternate accepted item
+	 */
+	public void addAlternate(int altItemId, String altItemName)
+	{
+		getAlternateItemIds().add(altItemId);
+		getAlternateItemNames().add(altItemName);
+	}
+
+	/**
+	 * Remove an alternate accepted item
+	 */
+	public void removeAlternate(int altItemId, String altItemName)
+	{
+		getAlternateItemIds().remove(altItemId);
+		getAlternateItemNames().remove(altItemName);
+	}
+
+	// Null-safe getters for Gson deserialization of old profiles
+	public Set<Integer> getAlternateItemIds()
+	{
+		if (alternateItemIds == null)
+		{
+			alternateItemIds = new HashSet<>();
+		}
+		return alternateItemIds;
+	}
+
+	public Set<String> getAlternateItemNames()
+	{
+		if (alternateItemNames == null)
+		{
+			alternateItemNames = new HashSet<>();
+		}
+		return alternateItemNames;
 	}
 
 	/**
@@ -62,14 +129,15 @@ public class TrackedItemState
 	 */
 	public boolean matches(int actualItemId, String actualItemName, int actualQuantity, Integer actualSlot)
 	{
-		// Check ID match
-		if (itemId > 0 && itemId != actualItemId)
+		// Check ID match (primary or alternate)
+		if (itemId > 0 && !acceptsItemId(actualItemId))
 		{
 			return false;
 		}
 
-		// Check name match (case-insensitive contains)
-		if (itemName != null && !itemName.isEmpty() && actualItemName != null)
+		// Check name match only for primary item (alternates matched by ID are authoritative)
+		boolean isAlternateMatch = itemId > 0 && itemId != actualItemId && acceptsItemId(actualItemId);
+		if (!isAlternateMatch && itemName != null && !itemName.isEmpty() && actualItemName != null)
 		{
 			if (!actualItemName.toLowerCase().contains(itemName.toLowerCase()))
 			{
@@ -127,6 +195,12 @@ public class TrackedItemState
 	{
 		StringBuilder sb = new StringBuilder();
 		sb.append(itemName).append(" (ID: ").append(itemId).append(")");
+
+		int altCount = getAlternateItemIds().size();
+		if (altCount > 0)
+		{
+			sb.append(" (+").append(altCount).append(" variants)");
+		}
 
 		if (slot != null)
 		{

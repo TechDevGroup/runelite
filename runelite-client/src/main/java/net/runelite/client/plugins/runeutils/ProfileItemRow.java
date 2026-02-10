@@ -87,6 +87,18 @@ public class ProfileItemRow extends JPanel
 		nameLabel.setForeground(Color.WHITE);
 		namePanel.add(nameLabel);
 
+		// Variant count badge
+		int variantCount = itemState.getAlternateItemIds().size();
+		if (variantCount > 0)
+		{
+			JLabel variantBadge = new JLabel("+" + variantCount + " var");
+			variantBadge.setFont(FontManager.getRunescapeSmallFont());
+			variantBadge.setForeground(new Color(255, 183, 77));
+			variantBadge.setBorder(BorderFactory.createEmptyBorder(0, 3, 0, 0));
+			variantBadge.setToolTipText("Accepts " + variantCount + " alternate item(s)");
+			namePanel.add(variantBadge);
+		}
+
 		infoPanel.add(namePanel);
 
 		// Quantity condition

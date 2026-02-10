@@ -241,9 +241,13 @@ public class RuneUtilsOverlay extends Overlay
 
 			for (TrackedItemState agnosticState : snapshot.getPositionAgnosticStates().values())
 			{
-				agnosticRequirements
-					.computeIfAbsent(agnosticState.getItemId(), k -> new java.util.ArrayList<>())
-					.add(agnosticState);
+				// Register under all accepted IDs (primary + variants) for O(1) lookup
+				for (int acceptedId : agnosticState.getAllAcceptedItemIds())
+				{
+					agnosticRequirements
+						.computeIfAbsent(acceptedId, k -> new java.util.ArrayList<>())
+						.add(agnosticState);
+				}
 			}
 		}
 

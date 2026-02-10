@@ -268,6 +268,21 @@ public class RuneUtilsPlugin extends Plugin
 			log.info("[DevServer] Icon sync requested");
 			iconExtractor.syncAllIcons(client);
 		}
+		else if ("snapshot_container".equals(action))
+		{
+			String containerStr = data.has("containerType") ? data.get("containerType").getAsString() : "INVENTORY";
+			ContainerType ct;
+			try
+			{
+				ct = ContainerType.valueOf(containerStr);
+			}
+			catch (IllegalArgumentException e)
+			{
+				ct = ContainerType.INVENTORY;
+			}
+			log.info("[DevServer] Snapshot requested for {}", ct);
+			snapshotContainerAsProfile(ct, SnapshotMode.AGNOSTIC_ANY_QTY);
+		}
 	}
 
 	@Override
@@ -486,6 +501,13 @@ public class RuneUtilsPlugin extends Plugin
 					.setType(MenuAction.RUNELITE)
 					.onClick(this::handleCreateProfile);
 
+				// Snapshot Inventory menu entry
+				client.createMenuEntry(0)
+					.setOption("Snapshot Inventory")
+					.setTarget("")
+					.setType(MenuAction.RUNELITE)
+					.onClick(e -> snapshotContainerAsProfile(ContainerType.INVENTORY, SnapshotMode.AGNOSTIC_ANY_QTY));
+
 				// Only add once per menu
 				break;
 			}
@@ -578,6 +600,41 @@ public class RuneUtilsPlugin extends Plugin
 		saveProfiles();
 		syncProfileToDevServer(profile);
 		panel.log("Created " + containerType.getDisplayName() + " profile: " + profile.getName());
+	}
+
+	/**
+	 * Snapshot an entire container as a new profile
+	 */
+	public void snapshotContainerAsProfile(ContainerType containerType, SnapshotMode mode)
+	{
+		net.runelite.api.ItemContainer container = client.getItemContainer(containerType.getInventoryId());
+		if (container == null)
+		{
+			log.warn("[Snapshot] Container {} not available", containerType);
+			return;
+		}
+
+		java.util.function.Function<Integer, String> nameLookup = id -> {
+			var comp = itemManager.getItemComposition(id);
+			return comp != null ? comp.getName() : "Item " + id;
+		};
+
+		ContainerSnapshot snapshot = ContainerSnapshot.captureFromContainer(
+			containerType, container, nameLookup, mode
+		);
+
+		String timestamp = String.valueOf(System.currentTimeMillis() % 100000);
+		ProfileState profile = new ProfileState(
+			containerType.getDisplayName() + " Snapshot " + timestamp,
+			containerType
+		);
+		profile.setSnapshot(snapshot);
+
+		panel.addProfileState(profile);
+		saveProfiles();
+		syncProfileToDevServer(profile);
+		panel.log("Snapshot " + containerType.getDisplayName() + ": " + snapshot.getItemCount() + " items (" + mode.getDisplayName() + ")");
+		log.info("[Snapshot] Captured {} items from {} using mode {}", snapshot.getItemCount(), containerType, mode);
 	}
 
 	/**

@@ -86,6 +86,18 @@ public class ProfileSection extends JPanel
 		containerBadge.setToolTipText("Container: " + profile.getContainerType().getDisplayName());
 		leftPanel.add(containerBadge);
 
+		// Presence mode badge (only if not ALL)
+		PresenceMode mode = profile.getPresenceMode();
+		if (mode != PresenceMode.ALL)
+		{
+			String badgeText = mode == PresenceMode.ANY ? "[ANY]" : "[" + profile.getPresenceThreshold() + "+]";
+			JLabel presenceBadge = new JLabel(badgeText);
+			presenceBadge.setFont(FontManager.getRunescapeSmallFont());
+			presenceBadge.setForeground(new Color(255, 183, 77));
+			presenceBadge.setToolTipText("Presence: " + mode.getDisplayName());
+			leftPanel.add(presenceBadge);
+		}
+
 		// Orb indicator
 		orbIndicator = new ProfileOrbIndicator(profile.isEnabled(), this::toggleEnabled);
 		leftPanel.add(orbIndicator);
@@ -158,18 +170,20 @@ public class ProfileSection extends JPanel
 	{
 		if (profile.getSnapshot() != null)
 		{
-			// Remove old state and add updated state
 			ContainerSnapshot newSnapshot = new ContainerSnapshot(profile.getSnapshot().getContainerType());
 
 			for (TrackedItemState state : profile.getSnapshot().getAllItemStates().values())
 			{
-				if (state == oldState)
+				TrackedItemState toAdd = (state == oldState) ? updatedState : state;
+
+				// Use slot-aware overload for position-specific items to preserve their slot
+				if (toAdd.getSlot() != null && toAdd.getSlot() >= 0)
 				{
-					newSnapshot.addItemState(updatedState);
+					newSnapshot.addItemState(toAdd.getSlot(), toAdd);
 				}
 				else
 				{
-					newSnapshot.addItemState(state);
+					newSnapshot.addItemState(toAdd);
 				}
 			}
 

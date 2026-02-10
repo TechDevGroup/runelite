@@ -52,6 +52,38 @@ public class ItemContextMenu extends JPopupMenu
 
 		addSeparator();
 
+		// Variants submenu
+		JMenu variantsMenu = new JMenu("Variants");
+
+		JMenuItem addVariantItem = new JMenuItem("Add Variant...");
+		addVariantItem.addActionListener(e -> showAddVariantDialog());
+		variantsMenu.add(addVariantItem);
+
+		// Show existing variants with remove option
+		java.util.Set<Integer> altIds = itemState.getAlternateItemIds();
+		java.util.Iterator<Integer> idIter = altIds.iterator();
+		java.util.Iterator<String> nameIter = itemState.getAlternateItemNames().iterator();
+		if (!altIds.isEmpty())
+		{
+			variantsMenu.addSeparator();
+			while (idIter.hasNext())
+			{
+				int altId = idIter.next();
+				String altName = nameIter.hasNext() ? nameIter.next() : "Item " + altId;
+				JMenuItem varItem = new JMenuItem("Remove: " + altName + " (" + altId + ")");
+				varItem.setForeground(new Color(255, 152, 0));
+				varItem.addActionListener(e -> {
+					itemState.removeAlternate(altId, altName);
+					onUpdate.accept(itemState);
+				});
+				variantsMenu.add(varItem);
+			}
+		}
+
+		add(variantsMenu);
+
+		addSeparator();
+
 		JCheckBoxMenuItem requireSlotItem = new JCheckBoxMenuItem("Require Specific Slot");
 		requireSlotItem.setSelected(itemState.hasValidationFlag(ValidationFlag.REQUIRE_POSITION));
 		requireSlotItem.addActionListener(e -> toggleRequirePosition(requireSlotItem.isSelected()));
@@ -257,6 +289,54 @@ public class ItemContextMenu extends JPopupMenu
 			}
 
 			onUpdate.accept(updatedState);
+		}
+	}
+
+	private void showAddVariantDialog()
+	{
+		JPanel panel = new JPanel(new GridLayout(2, 2, 5, 5));
+		panel.add(new JLabel("Item ID:"));
+		JTextField idField = new JTextField();
+		panel.add(idField);
+
+		panel.add(new JLabel("Item Name:"));
+		JTextField nameField = new JTextField();
+		panel.add(nameField);
+
+		Component parentWindow = SwingUtilities.getWindowAncestor(this.getInvoker());
+		int result = JOptionPane.showConfirmDialog(
+			parentWindow,
+			panel,
+			"Add Variant Item",
+			JOptionPane.OK_CANCEL_OPTION,
+			JOptionPane.QUESTION_MESSAGE
+		);
+
+		if (result == JOptionPane.OK_OPTION)
+		{
+			try
+			{
+				int altId = Integer.parseInt(idField.getText().trim());
+				String altName = nameField.getText().trim();
+				if (altName.isEmpty())
+				{
+					altName = "Item " + altId;
+				}
+				if (altId > 0)
+				{
+					itemState.addAlternate(altId, altName);
+					onUpdate.accept(itemState);
+				}
+			}
+			catch (NumberFormatException ex)
+			{
+				JOptionPane.showMessageDialog(
+					parentWindow,
+					"Please enter a valid item ID",
+					"Invalid Input",
+					JOptionPane.ERROR_MESSAGE
+				);
+			}
 		}
 	}
 }

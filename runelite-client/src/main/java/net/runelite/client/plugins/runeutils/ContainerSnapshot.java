@@ -38,16 +38,19 @@ public class ContainerSnapshot
 
 	/**
 	 * Add an item state without position requirement
-	 * If an item with the same ID already exists, this is a no-op (idempotent)
+	 * If an item with overlapping accepted IDs already exists, this is a no-op (idempotent)
 	 *
 	 * @param itemState the item state
 	 */
 	public void addItemState(TrackedItemState itemState)
 	{
-		// Check if item ID already exists - if so, no-op (idempotent)
-		if (hasItemId(itemState.getItemId()))
+		// Check if any accepted ID overlaps with existing states
+		for (int acceptedId : itemState.getAllAcceptedItemIds())
 		{
-			return;
+			if (hasItemId(acceptedId))
+			{
+				return;
+			}
 		}
 
 		// Use negative slot counter for position-agnostic items
@@ -61,12 +64,12 @@ public class ContainerSnapshot
 	}
 
 	/**
-	 * Check if an item ID already exists in this snapshot
+	 * Check if an item ID is accepted by any tracked state in this snapshot
 	 */
 	public boolean hasItemId(int itemId)
 	{
 		return slotStates.values().stream()
-			.anyMatch(state -> state.getItemId() == itemId);
+			.anyMatch(state -> state.acceptsItemId(itemId));
 	}
 
 	/**
@@ -118,13 +121,32 @@ public class ContainerSnapshot
 	 *
 	 * @param itemContainer the item container to validate
 	 * @param itemNameLookup function to lookup item names by ID
-	 * @return true if the container matches this snapshot
+	 * @return true if ALL items match (backward-compatible)
 	 */
 	public boolean validate(ItemContainer itemContainer, Function<Integer, String> itemNameLookup)
 	{
+		return validateDetailed(itemContainer, itemNameLookup).satisfies(PresenceMode.ALL, 0);
+	}
+
+	/**
+	 * Validate the container against this snapshot with detailed results
+	 *
+	 * @param itemContainer the item container to validate
+	 * @param itemNameLookup function to lookup item names by ID
+	 * @return detailed validation result with match counts
+	 */
+	public ValidationResult validateDetailed(ItemContainer itemContainer, Function<Integer, String> itemNameLookup)
+	{
+		ValidationResult result = new ValidationResult();
+
 		if (itemContainer == null)
 		{
-			return false;
+			// All requirements are mismatches
+			for (TrackedItemState state : slotStates.values())
+			{
+				result.recordMismatch(-1, state);
+			}
+			return result;
 		}
 
 		Item[] items = itemContainer.getItems();
@@ -139,7 +161,8 @@ public class ContainerSnapshot
 
 			if (slot >= items.length)
 			{
-				return false;
+				result.recordMismatch(slot, state);
+				continue;
 			}
 
 			Item item = items[slot];
@@ -147,12 +170,15 @@ public class ContainerSnapshot
 			int quantity = item.getQuantity();
 			String itemName = itemNameLookup.apply(itemId);
 
-			if (!state.matches(itemId, itemName, quantity, slot))
+			if (state.matches(itemId, itemName, quantity, slot))
 			{
-				return false;
+				result.recordMatch(slot);
+				matchedSlots.put(slot, true);
 			}
-
-			matchedSlots.put(slot, true);
+			else
+			{
+				result.recordMismatch(slot, state);
+			}
 		}
 
 		// Pass 2: Validate position-agnostic items
@@ -163,7 +189,6 @@ public class ContainerSnapshot
 
 			for (int slot = 0; slot < items.length; slot++)
 			{
-				// Skip already matched slots
 				if (matchedSlots.containsKey(slot))
 				{
 					continue;
@@ -176,6 +201,7 @@ public class ContainerSnapshot
 
 				if (state.matches(itemId, itemName, quantity, slot))
 				{
+					result.recordMatch(slot);
 					matchedSlots.put(slot, true);
 					found = true;
 					break;
@@ -184,7 +210,7 @@ public class ContainerSnapshot
 
 			if (!found)
 			{
-				return false;
+				result.recordMismatch(-1, state);
 			}
 		}
 
@@ -198,13 +224,13 @@ public class ContainerSnapshot
 					Item item = items[slot];
 					if (item.getId() != -1 && item.getQuantity() > 0)
 					{
-						return false;
+						result.recordMismatch(slot, null);
 					}
 				}
 			}
 		}
 
-		return true;
+		return result;
 	}
 
 	/**
@@ -216,6 +242,11 @@ public class ContainerSnapshot
 	 * @return a new ContainerSnapshot
 	 */
 	public static ContainerSnapshot captureFromContainer(ContainerType type, ItemContainer container, Function<Integer, String> itemNameLookup)
+	{
+		return captureFromContainer(type, container, itemNameLookup, SnapshotMode.POSITION_EXACT);
+	}
+
+	public static ContainerSnapshot captureFromContainer(ContainerType type, ItemContainer container, Function<Integer, String> itemNameLookup, SnapshotMode mode)
 	{
 		ContainerSnapshot snapshot = new ContainerSnapshot(type);
 
@@ -241,9 +272,16 @@ public class ContainerSnapshot
 			TrackedItemState state = new TrackedItemState(itemId, itemName);
 			state.setQuantity(quantity);
 			state.setQuantityMax(quantity);
-			state.setQuantityCondition(QuantityCondition.EXACT);
+			state.setQuantityCondition(mode.isExactQuantity() ? QuantityCondition.EXACT : QuantityCondition.ANY);
 
-			snapshot.addItemState(slot, state);
+			if (mode.isPositionSpecific())
+			{
+				snapshot.addItemState(slot, state);
+			}
+			else
+			{
+				snapshot.addItemState(state);
+			}
 		}
 
 		return snapshot;

@@ -20,6 +20,8 @@ public class ProfileState
 	private boolean prioritized = false;
 	private InterfaceState requiredInterfaceState = InterfaceState.ANY;
 	private boolean previewMode = false;
+	private PresenceMode presenceMode = PresenceMode.ALL;
+	private int presenceThreshold = 1;
 
 	public ProfileState()
 	{
@@ -48,7 +50,15 @@ public class ProfileState
 		}
 
 		ItemContainer container = containerProvider.apply(containerType);
-		return snapshot.validate(container, itemNameLookup);
+		PresenceMode mode = presenceMode != null ? presenceMode : PresenceMode.ALL;
+		ValidationResult result = snapshot.validateDetailed(container, itemNameLookup);
+		return result.satisfies(mode, presenceThreshold);
+	}
+
+	// Null-safe getter for Gson deserialization of old profiles
+	public PresenceMode getPresenceMode()
+	{
+		return presenceMode != null ? presenceMode : PresenceMode.ALL;
 	}
 
 	/**
