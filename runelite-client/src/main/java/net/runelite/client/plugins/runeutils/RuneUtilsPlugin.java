@@ -22,6 +22,7 @@ import net.runelite.api.events.PostMenuSort;
 import net.runelite.api.events.ItemContainerChanged;
 import net.runelite.client.input.MouseListener;
 import net.runelite.client.input.MouseManager;
+import java.awt.Point;
 import java.awt.event.MouseEvent;
 import net.runelite.api.gameval.InterfaceID;
 import net.runelite.api.widgets.ComponentID;
@@ -81,19 +82,34 @@ public class RuneUtilsPlugin extends Plugin
 
 	private NavigationButton navButton;
 	private RuneUtilsOverlay inventoryOverlay;
+	private InventoryEdgeOverlay rightEdgeOverlay;
 	private final Gson gson = new Gson();
 	private final SlotSelectionState slotSelectionState = new SlotSelectionState();
+
+	// Dev server components
+	private DevServerClient devClient;
+	private HotReloadManager hotReloadManager;
+	private GameStateStreamer gameStateStreamer;
+	private IconExtractor iconExtractor;
+	private JSEngine jsEngine;
+	private ArtifactManager artifactManager;
 	private final MouseListener mouseListener = new MouseListener()
 	{
 		@Override
 		public MouseEvent mouseClicked(MouseEvent event)
 		{
-			if (slotSelectionState.isActive() && event.getButton() == MouseEvent.BUTTON1)
+			if (event.getButton() == MouseEvent.BUTTON1)
 			{
-				if (inventoryOverlay != null)
+				if (slotSelectionState.isActive())
 				{
-					inventoryOverlay.handleClick(event.getX(), event.getY());
+					if (inventoryOverlay != null)
+					{
+						inventoryOverlay.handleClick(event.getX(), event.getY());
+					}
+					return event;
 				}
+
+				handleEdgeTabClick(event);
 			}
 			return event;
 		}
@@ -131,6 +147,7 @@ public class RuneUtilsPlugin extends Plugin
 		@Override
 		public MouseEvent mouseMoved(MouseEvent event)
 		{
+			handleEdgeTabHover(event);
 			return event;
 		}
 	};
@@ -164,19 +181,102 @@ public class RuneUtilsPlugin extends Plugin
 		inventoryOverlay = new RuneUtilsOverlay(client, this, panel, config, slotSelectionState, itemManager);
 		overlayManager.add(inventoryOverlay);
 
+
+		rightEdgeOverlay = new InventoryEdgeOverlay(client, panel.getProfileStates(), InventoryEdgeOverlay.EdgeSide.RIGHT);
+		overlayManager.add(rightEdgeOverlay);
+
 		// Load saved profiles
 		loadProfiles();
 
-		// Register mouse listener for slot selection
+		// Register mouse listener for slot selection and edge tabs
 		mouseManager.registerMouseListener(mouseListener);
 
+		// Initialize dev server integration
+		initDevServer();
+
 		panel.log("Plugin started successfully");
+	}
+
+	private void initDevServer()
+	{
+		try
+		{
+			String devServerUrl = System.getProperty("runeutils.devserver", "ws://localhost:3000/ws");
+			devClient = new DevServerClient(devServerUrl);
+
+			// Initialize JS engine
+			jsEngine = new JSEngine();
+			log.info("[RuneUtils] JS Engine initialized");
+
+			// Initialize artifact manager
+			artifactManager = new ArtifactManager(devClient, jsEngine);
+			log.info("[RuneUtils] Artifact Manager initialized");
+
+			iconExtractor = new IconExtractor(itemManager, devClient);
+			hotReloadManager = new HotReloadManager(devClient, panel, artifactManager);
+			gameStateStreamer = new GameStateStreamer(client, itemManager, devClient, iconExtractor);
+
+			devClient.on("command", this::handleDevCommand);
+			devClient.on("connected", this::handleDevServerConnected);
+			// Note: Profile sync happens via ArtifactManager's profile_update handler
+			// which populates the artifact manager's state. We'll implement a
+			// change-tracking queue system to sync only when needed.
+
+			devClient.connect();
+			hotReloadManager.start();
+
+			log.info("[DevServer] Initializing connection to {}", devServerUrl);
+		}
+		catch (Exception e)
+		{
+			log.warn("[DevServer] Failed to connect (dev mode disabled): {}", e.getMessage());
+		}
+	}
+
+	private void handleDevServerConnected(com.google.gson.JsonObject message)
+	{
+		log.info("[DevServer] Connected, pushing local profiles to server");
+
+		// Register all locally-loaded profiles with ArtifactManager and push to server.
+		// This prevents HotReloadManager from wiping locally-loaded profiles when
+		// the server responds with its own set of profiles.
+		java.util.List<ProfileState> localProfiles = panel.getProfileStates();
+		for (ProfileState profile : localProfiles)
+		{
+			syncProfileToDevServer(profile);
+		}
+		log.info("[DevServer] Pushed {} local profiles to server", localProfiles.size());
+	}
+
+	private void handleDevCommand(com.google.gson.JsonObject message)
+	{
+		if (!message.has("data"))
+		{
+			return;
+		}
+
+		com.google.gson.JsonObject data = message.getAsJsonObject("data");
+		if (!data.has("action"))
+		{
+			return;
+		}
+
+		String action = data.get("action").getAsString();
+
+		if ("sync_icons".equals(action))
+		{
+			log.info("[DevServer] Icon sync requested");
+			iconExtractor.syncAllIcons(client);
+		}
 	}
 
 	@Override
 	protected void shutDown() throws Exception
 	{
 		log.info("Rune Utils stopped!");
+
+		// Shutdown dev server components
+		shutdownDevServer();
 
 		// Remove sidebar panel
 		if (navButton != null)
@@ -185,15 +285,45 @@ public class RuneUtilsPlugin extends Plugin
 			navButton = null;
 		}
 
-		// Remove overlay
+		// Remove overlays
 		if (inventoryOverlay != null)
 		{
 			overlayManager.remove(inventoryOverlay);
 			inventoryOverlay = null;
 		}
 
+		if (rightEdgeOverlay != null)
+		{
+			overlayManager.remove(rightEdgeOverlay);
+			rightEdgeOverlay = null;
+		}
+
 		// Unregister mouse listener
 		mouseManager.unregisterMouseListener(mouseListener);
+	}
+
+	private void shutdownDevServer()
+	{
+		if (hotReloadManager != null)
+		{
+			hotReloadManager.stop();
+		}
+
+		if (iconExtractor != null)
+		{
+			iconExtractor.shutdown();
+		}
+
+		if (jsEngine != null)
+		{
+			jsEngine.close();
+			log.info("[RuneUtils] JS Engine closed");
+		}
+
+		if (devClient != null)
+		{
+			devClient.close();
+		}
 	}
 
 	@Subscribe
@@ -302,11 +432,14 @@ public class RuneUtilsPlugin extends Plugin
 	@Subscribe
 	public void onItemContainerChanged(ItemContainerChanged event)
 	{
-		// Inventory change detection for highlighting
-		// The overlay will handle the actual highlighting
 		if (inventoryOverlay != null)
 		{
 			inventoryOverlay.onInventoryChanged();
+		}
+
+		if (gameStateStreamer != null)
+		{
+			gameStateStreamer.streamState();
 		}
 	}
 
@@ -440,8 +573,10 @@ public class RuneUtilsPlugin extends Plugin
 		snapshot.addItemState(itemState);
 		profile.setSnapshot(snapshot);
 
-		// Add to panel
+		// Add to panel and persist
 		panel.addProfileState(profile);
+		saveProfiles();
+		syncProfileToDevServer(profile);
 		panel.log("Created " + containerType.getDisplayName() + " profile: " + profile.getName());
 	}
 
@@ -543,8 +678,10 @@ public class RuneUtilsPlugin extends Plugin
 		// Add item without position requirement (position-agnostic)
 		snapshot.addItemState(itemState);
 
-		// Refresh UI to show the newly added item
+		// Refresh UI, persist, and sync to dev server
 		panel.rebuild();
+		saveProfiles();
+		syncProfileToDevServer(profile);
 		panel.log("Added " + itemName + " to profile: " + profile.getName());
 	}
 
@@ -581,6 +718,88 @@ public class RuneUtilsPlugin extends Plugin
 	public SlotSelectionState getSlotSelectionState()
 	{
 		return slotSelectionState;
+	}
+
+	/**
+	 * Get the artifact manager for accessing dev server data
+	 */
+	public ArtifactManager getArtifactManager()
+	{
+		return artifactManager;
+	}
+
+	/**
+	 * Handle click on edge tab overlay
+	 */
+	private void handleEdgeTabClick(MouseEvent event)
+	{
+		if (rightEdgeOverlay == null)
+		{
+			return;
+		}
+
+		Point clickPoint = event.getPoint();
+
+		Integer rightIndex = rightEdgeOverlay.getProfileIndexAt(clickPoint);
+		if (rightIndex != null)
+		{
+			ProfileState profile = rightEdgeOverlay.getProfileAt(rightIndex);
+			if (profile != null)
+			{
+				profile.setEnabled(!profile.isEnabled());
+				panel.rebuild();
+				saveProfiles();
+				syncProfileToDevServer(profile);
+			}
+		}
+	}
+
+	/**
+	 * Handle hover on edge tab overlay for preview
+	 */
+	private void handleEdgeTabHover(MouseEvent event)
+	{
+		if (rightEdgeOverlay == null || inventoryOverlay == null)
+		{
+			return;
+		}
+
+		Point hoverPoint = event.getPoint();
+
+		Integer rightIndex = rightEdgeOverlay.getProfileIndexAt(hoverPoint);
+		if (rightIndex != null)
+		{
+			rightEdgeOverlay.setHoveredProfileIndex(rightIndex);
+			ProfileState hoveredProfile = rightEdgeOverlay.getHoveredProfile();
+			inventoryOverlay.setHoveredProfile(hoveredProfile);
+			return;
+		}
+
+		rightEdgeOverlay.setHoveredProfileIndex(null);
+		inventoryOverlay.setHoveredProfile(null);
+	}
+
+	/**
+	 * Push profile update to dev server so all clients sync in real time.
+	 * Also registers the profile with ArtifactManager so it isn't wiped
+	 * when the next external update triggers a panel sync.
+	 */
+	private void syncProfileToDevServer(ProfileState profile)
+	{
+		// Keep ArtifactManager aware of locally-modified profiles
+		if (artifactManager != null)
+		{
+			artifactManager.updateLocalProfile(profile);
+		}
+
+		if (devClient == null || !devClient.isConnected())
+		{
+			return;
+		}
+
+		com.google.gson.JsonObject profileData = gson.toJsonTree(profile).getAsJsonObject();
+		devClient.sendMessage("profile_update", profileData);
+		log.debug("[DevServer] Synced profile: {}", profile.getName());
 	}
 
 	/**

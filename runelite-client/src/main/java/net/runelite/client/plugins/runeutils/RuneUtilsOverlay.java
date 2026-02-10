@@ -7,7 +7,6 @@ import java.awt.Graphics2D;
 import java.awt.Rectangle;
 import javax.inject.Inject;
 import net.runelite.api.Client;
-import net.runelite.api.InventoryID;
 import net.runelite.api.Item;
 import net.runelite.api.ItemContainer;
 import net.runelite.api.widgets.Widget;
@@ -17,7 +16,8 @@ import net.runelite.client.ui.overlay.OverlayLayer;
 import net.runelite.client.ui.overlay.OverlayPosition;
 
 /**
- * Overlay for highlighting inventory items based on configured profiles
+ * Overlay for highlighting container items based on configured profiles
+ * Optimized with O(1) lookups using pre-staged data structures
  */
 public class RuneUtilsOverlay extends Overlay
 {
@@ -28,9 +28,8 @@ public class RuneUtilsOverlay extends Overlay
 	private final SlotSelectionState slotSelectionState;
 	private final ItemManager itemManager;
 
-	// Debug output deduplication - tracks state across render calls
 	private boolean lastWasSlotSelection = false;
-	private boolean lastHadInventory = false;
+	private ProfileState hoveredProfile = null;
 
 	public RuneUtilsOverlay(Client client, RuneUtilsPlugin plugin, RuneUtilsPanel panel, RuneUtilsConfig config, SlotSelectionState slotSelectionState, ItemManager itemManager)
 	{
@@ -52,68 +51,125 @@ public class RuneUtilsOverlay extends Overlay
 			return null;
 		}
 
-		// Check if itemManager is available
 		if (itemManager == null)
 		{
 			return null;
 		}
 
-		// Get inventory
-		ItemContainer inventory = client.getItemContainer(InventoryID.INVENTORY);
-		if (inventory == null)
-		{
-			if (lastHadInventory)
-			{
-				System.out.println("[Overlay] Inventory closed");
-				lastHadInventory = false;
-			}
-			return null;
-		}
-
-		Item[] items = inventory.getItems();
-		if (items == null)
-		{
-			return null;
-		}
-
-		// Get inventory widget for positioning
-		Widget inventoryWidget = client.getWidget(149, 0);
-		if (inventoryWidget == null)
-		{
-			return null;
-		}
-
-		// Get individual slot widgets (each slot is a child widget with its own bounds)
-		Widget[] slotWidgets = inventoryWidget.getChildren();
-		if (slotWidgets == null || slotWidgets.length < 28)
-		{
-			return null;
-		}
-
-		lastHadInventory = true;
-
-		// Check if we're in slot selection mode
 		if (slotSelectionState.isActive())
 		{
-			if (!lastWasSlotSelection)
-			{
-				System.out.println("[Overlay] Slot selection mode activated");
-				lastWasSlotSelection = true;
-			}
-			// Draw slot selection overlays (clickable, not click-through)
-			renderSlotSelection(graphics, slotWidgets);
+			renderSlotSelectionMode(graphics);
 			return null;
 		}
-		else if (lastWasSlotSelection)
+
+		if (lastWasSlotSelection)
 		{
 			System.out.println("[Overlay] Slot selection mode deactivated");
 			lastWasSlotSelection = false;
 		}
 
-		// Draw status overlays (click-through) - shows match/mismatch for profile items
-		renderSlotStatus(graphics, slotWidgets, items);
+		renderAllContainerOverlays(graphics);
 
 		return null;
+	}
+
+	private void renderSlotSelectionMode(Graphics2D graphics)
+	{
+		Widget inventoryWidget = client.getWidget(149, 0);
+		if (inventoryWidget == null)
+		{
+			return;
+		}
+
+		Widget[] slotWidgets = inventoryWidget.getChildren();
+		if (slotWidgets == null || slotWidgets.length < 28)
+		{
+			return;
+		}
+
+		if (!lastWasSlotSelection)
+		{
+			System.out.println("[Overlay] Slot selection mode activated");
+			lastWasSlotSelection = true;
+		}
+
+		renderSlotSelection(graphics, slotWidgets);
+	}
+
+	private void renderAllContainerOverlays(Graphics2D graphics)
+	{
+		java.util.List<ProfileState> profilesToRender = getProfilesToRender();
+		java.util.Set<ContainerType> activeContainers = new java.util.HashSet<>();
+
+		for (ProfileState profile : profilesToRender)
+		{
+			if (!profile.getContainerType().isComposite())
+			{
+				activeContainers.add(profile.getContainerType());
+			}
+		}
+
+		for (ContainerType containerType : activeContainers)
+		{
+			renderContainerOverlay(graphics, containerType, profilesToRender);
+		}
+	}
+
+	private void renderContainerOverlay(Graphics2D graphics, ContainerType containerType, java.util.List<ProfileState> profiles)
+	{
+		ContainerWidgetInfo widgetInfo = ContainerWidgetInfo.forContainer(containerType);
+		if (widgetInfo == null)
+		{
+			return;
+		}
+
+		ItemContainer container = client.getItemContainer(containerType.getInventoryId());
+		if (container == null)
+		{
+			return;
+		}
+
+		Item[] items = container.getItems();
+		if (items == null)
+		{
+			return;
+		}
+
+		Widget containerWidget = client.getWidget(widgetInfo.getGroupId(), widgetInfo.getChildId());
+		if (containerWidget == null || containerWidget.isHidden())
+		{
+			return;
+		}
+
+		Widget[] slotWidgets = containerWidget.getChildren();
+		if (slotWidgets == null || slotWidgets.length == 0)
+		{
+			return;
+		}
+
+		renderSlotStatus(graphics, slotWidgets, items, containerType, profiles);
+	}
+
+	private java.util.List<ProfileState> getProfilesToRender()
+	{
+		if (hoveredProfile != null)
+		{
+			return java.util.Collections.singletonList(hoveredProfile);
+		}
+
+		// Try to use dev server profiles from ArtifactManager first
+		ArtifactManager artifactManager = plugin.getArtifactManager();
+		if (artifactManager != null && artifactManager.isReady())
+		{
+			return artifactManager.getAllProfiles().stream()
+				.filter(profile -> profile.shouldRender(client))
+				.collect(java.util.stream.Collectors.toList());
+		}
+
+		// Fallback to panel profiles if dev server not available
+		return panel.getProfileStates().stream()
+			.filter(profile -> profile.shouldRender(client))
+			.collect(java.util.stream.Collectors.toList());
 	}
 
 	public void onInventoryChanged()
@@ -121,9 +177,6 @@ public class RuneUtilsOverlay extends Overlay
 		// Can be used for additional processing when inventory changes
 	}
 
-	/**
-	 * Draw slot selection overlays when in selection mode
-	 */
 	private void renderSlotSelection(Graphics2D graphics, Widget[] slotWidgets)
 	{
 		Color selectionColor = config.slotSelectionColor();
@@ -138,42 +191,88 @@ public class RuneUtilsOverlay extends Overlay
 
 			Rectangle slotBounds = slotWidget.getBounds();
 
-			// Draw selection overlay
 			graphics.setColor(selectionColor);
 			graphics.fillRect(slotBounds.x, slotBounds.y, slotBounds.width, slotBounds.height);
 
-			// Draw border
 			graphics.setColor(Color.WHITE);
 			graphics.setStroke(new BasicStroke(2));
 			graphics.drawRect(slotBounds.x, slotBounds.y, slotBounds.width, slotBounds.height);
 
-			// Draw slot number
 			graphics.setColor(Color.BLACK);
 			String slotText = String.valueOf(i + 1);
 			graphics.drawString(slotText, slotBounds.x + slotBounds.width / 2 - 5, slotBounds.y + slotBounds.height / 2 + 5);
 		}
 	}
 
-	/**
-	 * Draw status overlays showing match/mismatch for profile items
-	 */
-	private void renderSlotStatus(Graphics2D graphics, Widget[] slotWidgets, Item[] items)
+	private void renderSlotStatus(Graphics2D graphics, Widget[] slotWidgets, Item[] items, ContainerType containerType, java.util.List<ProfileState> profiles)
 	{
 		Color matchColor = config.slotMatchColor();
 		Color mismatchColor = config.slotMismatchColor();
 
-		for (int i = 0; i < Math.min(items.length, 28); i++)
+		// Pre-stage: Build O(1) lookup maps
+		java.util.Map<Integer, TrackedItemState> positionRequirements = new java.util.HashMap<>();
+		java.util.Map<Integer, java.util.List<TrackedItemState>> agnosticRequirements = new java.util.HashMap<>();
+
+		// Calculate max valid slot index for this container
+		int maxSlots = Math.min(items.length, slotWidgets.length);
+
+		for (ProfileState profile : profiles)
+		{
+			if (profile.getContainerType() != containerType)
+			{
+				continue;
+			}
+
+			ContainerSnapshot snapshot = profile.getSnapshot();
+			if (snapshot == null || snapshot.getAllItemStates().isEmpty())
+			{
+				continue;
+			}
+
+			for (java.util.Map.Entry<Integer, TrackedItemState> entry : snapshot.getPositionSpecificStates().entrySet())
+			{
+				int slot = entry.getKey();
+				// Only add requirements that are within the valid slot range
+				if (slot >= 0 && slot < maxSlots)
+				{
+					positionRequirements.put(slot, entry.getValue());
+				}
+			}
+
+			for (TrackedItemState agnosticState : snapshot.getPositionAgnosticStates().values())
+			{
+				agnosticRequirements
+					.computeIfAbsent(agnosticState.getItemId(), k -> new java.util.ArrayList<>())
+					.add(agnosticState);
+			}
+		}
+
+		if (positionRequirements.isEmpty() && agnosticRequirements.isEmpty())
+		{
+			return;
+		}
+
+		for (int i = 0; i < maxSlots; i++)
 		{
 			Item item = items[i];
 			Widget slotWidget = slotWidgets[i];
+
 			if (slotWidget == null)
 			{
 				continue;
 			}
 
-			Rectangle slotBounds = slotWidget.getBounds();
+			TrackedItemState positionReq = positionRequirements.get(i);
+			java.util.List<TrackedItemState> agnosticReqs = item != null && item.getId() != -1
+				? agnosticRequirements.get(item.getId())
+				: null;
 
-			// Check if this slot/item matches any enabled profile
+			if (positionReq == null && agnosticReqs == null)
+			{
+				continue;
+			}
+
+			Rectangle slotBounds = slotWidget.getBounds();
 			boolean shouldHighlight = false;
 			boolean isCorrect = false;
 
@@ -184,95 +283,44 @@ public class RuneUtilsOverlay extends Overlay
 				{
 					String itemName = itemComposition.getName();
 
-					for (ProfileState profile : panel.getProfileStates())
+					if (positionReq != null)
 					{
-						if (!profile.isEnabled() || profile.getContainerType() != ContainerType.INVENTORY)
+						shouldHighlight = true;
+						isCorrect = positionReq.matches(item.getId(), itemName, item.getQuantity(), i);
+					}
+					else if (agnosticReqs != null)
+					{
+						for (TrackedItemState agnosticReq : agnosticReqs)
 						{
-							continue;
-						}
-
-						ContainerSnapshot snapshot = profile.getSnapshot();
-						if (snapshot == null)
-						{
-							continue;
-						}
-
-						// Check position-specific items (must be in exact slot)
-						TrackedItemState positionState = snapshot.getPositionSpecificStates().get(i);
-						if (positionState != null)
-						{
-							shouldHighlight = true;
-							if (positionState.matches(item.getId(), itemName, item.getQuantity(), i))
-							{
-								isCorrect = true;
-							}
-							break; // Found a position-specific requirement for this slot
-						}
-
-						// Check position-agnostic items (can be in any slot)
-						for (TrackedItemState agnosticState : snapshot.getPositionAgnosticStates().values())
-						{
-							if (agnosticState.matches(item.getId(), itemName, item.getQuantity(), null))
+							if (agnosticReq.matches(item.getId(), itemName, item.getQuantity(), null))
 							{
 								shouldHighlight = true;
 								isCorrect = true;
 								break;
 							}
 						}
-
-						if (shouldHighlight)
-						{
-							break;
-						}
 					}
 				}
 			}
-			else
+			else if (positionReq != null)
 			{
-				// Empty slot - check if any profile requires something here
-				for (ProfileState profile : panel.getProfileStates())
-				{
-					if (!profile.isEnabled() || profile.getContainerType() != ContainerType.INVENTORY)
-					{
-						continue;
-					}
-
-					ContainerSnapshot snapshot = profile.getSnapshot();
-					if (snapshot == null)
-					{
-						continue;
-					}
-
-					// Check if this slot is required by profile (position-specific)
-					TrackedItemState requiredState = snapshot.getPositionSpecificStates().get(i);
-					if (requiredState != null)
-					{
-						shouldHighlight = true;
-						isCorrect = false; // Item is missing
-						break;
-					}
-				}
+				shouldHighlight = true;
+				isCorrect = false;
 			}
 
-			// Draw overlay based on status
 			if (shouldHighlight)
 			{
-				if (isCorrect)
-				{
-					graphics.setColor(matchColor);
-				}
-				else
-				{
-					graphics.setColor(mismatchColor);
-				}
+				graphics.setColor(isCorrect ? matchColor : mismatchColor);
 				graphics.fillRect(slotBounds.x, slotBounds.y, slotBounds.width, slotBounds.height);
 			}
 		}
 	}
 
-	/**
-	 * Handle mouse clicks for slot selection
-	 */
+	public void setHoveredProfile(ProfileState profile)
+	{
+		this.hoveredProfile = profile;
+	}
+
 	public void handleClick(int mouseX, int mouseY)
 	{
 		if (!slotSelectionState.isActive())
@@ -292,7 +340,6 @@ public class RuneUtilsOverlay extends Overlay
 			return;
 		}
 
-		// Check which slot was clicked by checking bounds of each slot widget
 		for (int i = 0; i < Math.min(slotWidgets.length, 28); i++)
 		{
 			Widget slotWidget = slotWidgets[i];

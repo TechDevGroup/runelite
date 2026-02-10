@@ -17,6 +17,7 @@ public class ProfileSection extends JPanel
 	private final Runnable onDataChanged;
 	private final JPanel itemsContainer;
 	private JLabel nameLabel;
+	private ProfileOrbIndicator orbIndicator;
 	private final RuneUtilsPlugin plugin;
 
 	public ProfileSection(ProfileState profile, ItemManager itemManager, Runnable onDataChanged, RuneUtilsPlugin plugin)
@@ -59,43 +60,41 @@ public class ProfileSection extends JPanel
 		});
 		leftPanel.add(collapseButton);
 
-		// Profile name (double-click to rename)
+		// Profile name with right-click menu
 		nameLabel = new JLabel(profile.getName());
 		nameLabel.setFont(FontManager.getRunescapeBoldFont());
 		nameLabel.setForeground(Color.WHITE);
 		nameLabel.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-		nameLabel.setToolTipText("Double-click to rename");
+		nameLabel.setToolTipText("Right-click for options");
 		nameLabel.addMouseListener(new java.awt.event.MouseAdapter()
 		{
 			@Override
 			public void mouseClicked(java.awt.event.MouseEvent e)
 			{
-				if (e.getClickCount() == 2)
+				if (SwingUtilities.isRightMouseButton(e))
 				{
-					renameProfile();
+					showContextMenu(e);
 				}
 			}
 		});
 		leftPanel.add(nameLabel);
 
+		// Container type badge
+		JLabel containerBadge = new JLabel("[" + profile.getContainerType().getDisplayName().substring(0, 3).toUpperCase() + "]");
+		containerBadge.setFont(FontManager.getRunescapeSmallFont());
+		containerBadge.setForeground(getContainerColor(profile.getContainerType()));
+		containerBadge.setToolTipText("Container: " + profile.getContainerType().getDisplayName());
+		leftPanel.add(containerBadge);
+
+		// Orb indicator
+		orbIndicator = new ProfileOrbIndicator(profile.isEnabled(), this::toggleEnabled);
+		leftPanel.add(orbIndicator);
+
 		headerPanel.add(leftPanel, BorderLayout.WEST);
 
-		// Right side buttons
+		// Right side: delete button only (orb moved to left side)
 		JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 3, 0));
 		buttonPanel.setBackground(ColorScheme.DARKER_GRAY_COLOR);
-
-		// Toggle button
-		JToggleButton toggleButton = new JToggleButton(profile.isEnabled() ? "ON" : "OFF");
-		toggleButton.setSelected(profile.isEnabled());
-		toggleButton.setFont(FontManager.getRunescapeSmallFont());
-		toggleButton.setPreferredSize(new Dimension(35, 20));
-		toggleButton.setFocusPainted(false);
-		toggleButton.addActionListener(e -> {
-			profile.setEnabled(toggleButton.isSelected());
-			toggleButton.setText(profile.isEnabled() ? "ON" : "OFF");
-			onDataChanged.run();
-		});
-		buttonPanel.add(toggleButton);
 
 		// Delete button
 		JButton deleteButton = new JButton("×");
@@ -103,6 +102,7 @@ public class ProfileSection extends JPanel
 		deleteButton.setPreferredSize(new Dimension(20, 20));
 		deleteButton.setForeground(Color.RED);
 		deleteButton.setFocusPainted(false);
+		deleteButton.setToolTipText("Delete profile");
 		deleteButton.addActionListener(e -> confirmDelete());
 		buttonPanel.add(deleteButton);
 
@@ -200,25 +200,28 @@ public class ProfileSection extends JPanel
 		}
 	}
 
-	private void renameProfile()
+	private void showContextMenu(java.awt.event.MouseEvent e)
 	{
-		Component parentWindow = SwingUtilities.getWindowAncestor(this);
-		String newName = (String) JOptionPane.showInputDialog(
-			parentWindow,
-			"Enter new profile name:",
-			"Rename Profile",
-			JOptionPane.QUESTION_MESSAGE,
-			null,
-			null,
-			profile.getName()
+		ProfileContextMenu menu = new ProfileContextMenu(
+			profile,
+			this::onProfileUpdate,
+			this::confirmDelete
 		);
+		menu.show(e.getComponent(), e.getX(), e.getY());
+	}
 
-		if (newName != null && !newName.trim().isEmpty())
-		{
-			profile.setName(newName.trim());
-			nameLabel.setText(profile.getName());
-			onDataChanged.run();
-		}
+	private void toggleEnabled()
+	{
+		profile.setEnabled(!profile.isEnabled());
+		orbIndicator.setOrbEnabled(profile.isEnabled());
+		onDataChanged.run();
+	}
+
+	private void onProfileUpdate(ProfileState updatedProfile)
+	{
+		nameLabel.setText(updatedProfile.getName());
+		orbIndicator.setOrbEnabled(updatedProfile.isEnabled());
+		onDataChanged.run();
 	}
 
 	private void confirmDelete()
@@ -242,6 +245,23 @@ public class ProfileSection extends JPanel
 				parent.repaint();
 			}
 			onDataChanged.run();
+		}
+	}
+
+	private Color getContainerColor(ContainerType containerType)
+	{
+		switch (containerType)
+		{
+			case INVENTORY:
+				return new Color(100, 200, 255);
+			case BANK:
+				return new Color(255, 200, 100);
+			case EQUIPMENT:
+				return new Color(200, 100, 255);
+			case BANK_INVENTORY:
+				return new Color(150, 255, 150);
+			default:
+				return Color.LIGHT_GRAY;
 		}
 	}
 }

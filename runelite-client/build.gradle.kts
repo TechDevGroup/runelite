@@ -72,6 +72,8 @@ dependencies {
     api(libs.flatlaf.core)
     implementation(libs.flatlaf.extras)
     api(libs.commons.text)
+    implementation("org.java-websocket:Java-WebSocket:1.5.3")
+    implementation("org.mozilla:rhino:1.7.14")
     api(libs.jna.core)
     api(libs.jna.platform)
     api(libs.findbugs)

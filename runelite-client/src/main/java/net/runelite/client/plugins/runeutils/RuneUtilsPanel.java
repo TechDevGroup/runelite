@@ -15,6 +15,7 @@ import javax.swing.JButton;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
+import javax.swing.SwingUtilities;
 import javax.swing.border.EmptyBorder;
 import net.runelite.client.game.ItemManager;
 import net.runelite.client.ui.ColorScheme;
@@ -77,6 +78,13 @@ public class RuneUtilsPanel extends PluginPanel
 
 	public void rebuild()
 	{
+		// Self-route to EDT if called from WebSocket or game thread
+		if (!SwingUtilities.isEventDispatchThread())
+		{
+			SwingUtilities.invokeLater(this::rebuild);
+			return;
+		}
+
 		profilesContainer.removeAll();
 
 		if (profileStates.isEmpty())

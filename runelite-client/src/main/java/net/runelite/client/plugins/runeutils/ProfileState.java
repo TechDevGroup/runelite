@@ -2,6 +2,7 @@ package net.runelite.client.plugins.runeutils;
 
 import java.util.function.Function;
 import lombok.Data;
+import net.runelite.api.Client;
 import net.runelite.api.ItemContainer;
 
 /**
@@ -10,11 +11,15 @@ import net.runelite.api.ItemContainer;
 @Data
 public class ProfileState
 {
+	private String id;
 	private String name = "New Profile";
 	private ContainerType containerType = ContainerType.INVENTORY;
 	private ContainerSnapshot snapshot;
 	private boolean enabled = true;
 	private boolean collapsed = false;
+	private boolean prioritized = false;
+	private InterfaceState requiredInterfaceState = InterfaceState.ANY;
+	private boolean previewMode = false;
 
 	public ProfileState()
 	{
@@ -44,6 +49,25 @@ public class ProfileState
 
 		ItemContainer container = containerProvider.apply(containerType);
 		return snapshot.validate(container, itemNameLookup);
+	}
+
+	/**
+	 * Check if this profile should be rendered based on interface state
+	 * In preview mode, always returns true regardless of interface state
+	 */
+	public boolean shouldRender(Client client)
+	{
+		if (!enabled)
+		{
+			return false;
+		}
+
+		if (previewMode)
+		{
+			return true;
+		}
+
+		return requiredInterfaceState.isActive(client);
 	}
 
 	/**

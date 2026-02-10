@@ -59,11 +59,35 @@ public class ProfileItemRow extends JPanel
 		infoPanel.setLayout(new BoxLayout(infoPanel, BoxLayout.Y_AXIS));
 		infoPanel.setBackground(ColorScheme.DARKER_GRAY_COLOR);
 
-		// Item name
+		// Item name with slot badge
+		JPanel namePanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 3, 0));
+		namePanel.setBackground(ColorScheme.DARKER_GRAY_COLOR);
+
+		// Slot position badge
+		Integer slot = itemState.getSlot();
+		if (slot != null && slot >= 0)
+		{
+			JLabel slotBadge = new JLabel("Slot " + slot);
+			slotBadge.setFont(FontManager.getRunescapeSmallFont());
+			slotBadge.setForeground(new Color(100, 200, 255));
+			slotBadge.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 5));
+			namePanel.add(slotBadge);
+		}
+		else
+		{
+			JLabel slotBadge = new JLabel("Any");
+			slotBadge.setFont(FontManager.getRunescapeSmallFont());
+			slotBadge.setForeground(new Color(255, 152, 0));
+			slotBadge.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 5));
+			namePanel.add(slotBadge);
+		}
+
 		JLabel nameLabel = new JLabel(itemState.getItemName());
 		nameLabel.setFont(FontManager.getRunescapeSmallFont());
 		nameLabel.setForeground(Color.WHITE);
-		infoPanel.add(nameLabel);
+		namePanel.add(nameLabel);
+
+		infoPanel.add(namePanel);
 
 		// Quantity condition
 		if (itemState.getQuantityCondition() != QuantityCondition.ANY)
