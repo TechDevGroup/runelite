@@ -3,15 +3,13 @@ package net.runelite.client.plugins.runeutils;
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Dimension;
-import java.awt.GridBagConstraints;
-import java.awt.GridBagLayout;
-import java.awt.Insets;
+import java.awt.FlowLayout;
 import java.util.ArrayList;
 import java.util.List;
 import javax.inject.Inject;
+import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
-import javax.swing.JButton;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
@@ -21,7 +19,6 @@ import net.runelite.client.game.ItemManager;
 import net.runelite.client.ui.ColorScheme;
 import net.runelite.client.ui.FontManager;
 import net.runelite.client.ui.PluginPanel;
-import net.runelite.client.ui.components.PluginErrorPanel;
 
 /**
  * Configuration panel for Rune Utils plugin
@@ -30,7 +27,7 @@ public class RuneUtilsPanel extends PluginPanel
 {
 	private final List<ProfileState> profileStates;
 	private final JPanel profilesContainer;
-	private final PluginErrorPanel noProfilesPanel;
+	private final JPanel noProfilesPanel;
 	private final ItemManager itemManager;
 	private Runnable onSaveCallback;
 	private RuneUtilsPlugin plugin;
@@ -59,13 +56,29 @@ public class RuneUtilsPanel extends PluginPanel
 
 		// Profiles container with scrollpane
 		profilesContainer = new JPanel();
-		profilesContainer.setLayout(new GridBagLayout());
+		profilesContainer.setLayout(new BoxLayout(profilesContainer, BoxLayout.Y_AXIS));
 		profilesContainer.setBackground(ColorScheme.DARK_GRAY_COLOR);
 
-		// Empty state panel
-		noProfilesPanel = new PluginErrorPanel();
-		noProfilesPanel.setContent("No Profiles",
-			"Right-click an inventory item and select 'Create Profile'");
+		// Empty state panel — styled like a profile entry, left-anchored
+		noProfilesPanel = new JPanel(new BorderLayout());
+		noProfilesPanel.setBackground(ColorScheme.DARK_GRAY_COLOR);
+
+		JPanel emptyHeader = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
+		emptyHeader.setBackground(ColorScheme.DARKER_GRAY_COLOR);
+		emptyHeader.setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5));
+
+		JLabel emptyTitle = new JLabel("No Profiles");
+		emptyTitle.setForeground(Color.WHITE);
+		emptyTitle.setFont(FontManager.getRunescapeBoldFont());
+		emptyHeader.add(emptyTitle);
+
+		noProfilesPanel.add(emptyHeader, BorderLayout.NORTH);
+
+		JLabel emptyHint = new JLabel("Right-click an inventory item and select 'Create Profile'");
+		emptyHint.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
+		emptyHint.setFont(FontManager.getRunescapeSmallFont());
+		emptyHint.setBorder(new EmptyBorder(8, 5, 8, 5));
+		noProfilesPanel.add(emptyHint, BorderLayout.CENTER);
 
 		JScrollPane scrollPane = new JScrollPane(profilesContainer);
 		scrollPane.setBackground(ColorScheme.DARK_GRAY_COLOR);
@@ -86,29 +99,23 @@ public class RuneUtilsPanel extends PluginPanel
 		}
 
 		profilesContainer.removeAll();
+		profilesContainer.setLayout(new BoxLayout(profilesContainer, BoxLayout.Y_AXIS));
 
 		if (profileStates.isEmpty())
 		{
-			GridBagConstraints constraints = new GridBagConstraints();
-			constraints.fill = GridBagConstraints.BOTH;
-			constraints.weightx = 1;
-			constraints.weighty = 1;
-			profilesContainer.add(noProfilesPanel, constraints);
+			profilesContainer.add(noProfilesPanel);
 		}
 		else
 		{
-			// Use simplified list layout
-			profilesContainer.setLayout(new BoxLayout(profilesContainer, BoxLayout.Y_AXIS));
-
 			for (ProfileState profileState : profileStates)
 			{
 				ProfileSection section = new ProfileSection(profileState, itemManager, this::onDataChanged, plugin);
 				profilesContainer.add(section);
 			}
-
-			// Add filler at the bottom
-			profilesContainer.add(Box.createVerticalGlue());
 		}
+
+		// Push content to top
+		profilesContainer.add(Box.createVerticalGlue());
 
 		profilesContainer.revalidate();
 		profilesContainer.repaint();

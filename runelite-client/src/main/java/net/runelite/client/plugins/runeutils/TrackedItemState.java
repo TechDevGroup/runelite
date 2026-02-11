@@ -76,6 +76,24 @@ public class TrackedItemState
 	}
 
 	// Null-safe getters for Gson deserialization of old profiles
+	public QuantityCondition getQuantityCondition()
+	{
+		if (quantityCondition == null)
+		{
+			quantityCondition = QuantityCondition.EXACT;
+		}
+		return quantityCondition;
+	}
+
+	public Set<ValidationFlag> getValidationFlags()
+	{
+		if (validationFlags == null)
+		{
+			validationFlags = new HashSet<>();
+		}
+		return validationFlags;
+	}
+
 	public Set<Integer> getAlternateItemIds()
 	{
 		if (alternateItemIds == null)
@@ -157,7 +175,7 @@ public class TrackedItemState
 		// Check quantity unless IGNORE_QUANTITY flag is set
 		if (!hasValidationFlag(ValidationFlag.IGNORE_QUANTITY))
 		{
-			if (!quantityCondition.validate(actualQuantity, quantity, quantityMax))
+			if (!getQuantityCondition().validate(actualQuantity, quantity, quantityMax))
 			{
 				return false;
 			}
@@ -171,7 +189,7 @@ public class TrackedItemState
 	 */
 	public void addValidationFlag(ValidationFlag flag)
 	{
-		validationFlags.add(flag);
+		getValidationFlags().add(flag);
 	}
 
 	/**
@@ -179,7 +197,7 @@ public class TrackedItemState
 	 */
 	public void removeValidationFlag(ValidationFlag flag)
 	{
-		validationFlags.remove(flag);
+		getValidationFlags().remove(flag);
 	}
 
 	/**
@@ -187,7 +205,7 @@ public class TrackedItemState
 	 */
 	public boolean hasValidationFlag(ValidationFlag flag)
 	{
-		return validationFlags.contains(flag);
+		return getValidationFlags().contains(flag);
 	}
 
 	@Override
@@ -207,13 +225,13 @@ public class TrackedItemState
 			sb.append(" [Slot: ").append(slot).append("]");
 		}
 
-		sb.append(" ").append(quantityCondition.getSymbol()).append(" ");
+		sb.append(" ").append(getQuantityCondition().getSymbol()).append(" ");
 
-		if (quantityCondition == QuantityCondition.BETWEEN)
+		if (getQuantityCondition() == QuantityCondition.BETWEEN)
 		{
 			sb.append(quantity).append("-").append(quantityMax);
 		}
-		else if (quantityCondition != QuantityCondition.ANY)
+		else if (getQuantityCondition() != QuantityCondition.ANY)
 		{
 			sb.append(quantity);
 		}
