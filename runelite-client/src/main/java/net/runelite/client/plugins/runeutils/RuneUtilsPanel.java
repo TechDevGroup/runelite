@@ -109,7 +109,13 @@ public class RuneUtilsPanel extends PluginPanel
 		{
 			for (ProfileState profileState : profileStates)
 			{
-				ProfileSection section = new ProfileSection(profileState, itemManager, this::onDataChanged, plugin);
+				ProfileSection section = new ProfileSection(
+					profileState,
+					itemManager,
+					this::onDataChanged,
+					() -> removeProfileState(profileState),
+					plugin
+				);
 				profilesContainer.add(section);
 			}
 		}
@@ -159,6 +165,12 @@ public class RuneUtilsPanel extends PluginPanel
 	public void addProfileState(ProfileState profile)
 	{
 		profileStates.add(profile);
+		onDataChanged();
+	}
+
+	public void removeProfileState(ProfileState profile)
+	{
+		profileStates.remove(profile);
 		onDataChanged();
 	}
 

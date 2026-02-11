@@ -15,16 +15,18 @@ public class ProfileSection extends JPanel
 	private final ProfileState profile;
 	private final ItemManager itemManager;
 	private final Runnable onDataChanged;
+	private final Runnable onDelete;
 	private final JPanel itemsContainer;
 	private JLabel nameLabel;
 	private ProfileOrbIndicator orbIndicator;
 	private final RuneUtilsPlugin plugin;
 
-	public ProfileSection(ProfileState profile, ItemManager itemManager, Runnable onDataChanged, RuneUtilsPlugin plugin)
+	public ProfileSection(ProfileState profile, ItemManager itemManager, Runnable onDataChanged, Runnable onDelete, RuneUtilsPlugin plugin)
 	{
 		this.profile = profile;
 		this.itemManager = itemManager;
 		this.onDataChanged = onDataChanged;
+		this.onDelete = onDelete;
 		this.plugin = plugin;
 
 		setLayout(new BorderLayout());
@@ -251,14 +253,7 @@ public class ProfileSection extends JPanel
 
 		if (result == JOptionPane.YES_OPTION)
 		{
-			Container parent = getParent();
-			if (parent != null)
-			{
-				parent.remove(this);
-				parent.revalidate();
-				parent.repaint();
-			}
-			onDataChanged.run();
+			onDelete.run();
 		}
 	}
 
