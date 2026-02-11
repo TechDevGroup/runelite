@@ -23,6 +23,13 @@ public interface RuneUtilsConfig extends Config
 	)
 	String inventorySection = "inventory";
 
+	@ConfigSection(
+		name = "Dev Server",
+		description = "Settings for the embedded dev server",
+		position = 2
+	)
+	String devServerSection = "devServer";
+
 	// Menu Manipulation Settings
 	@ConfigItem(
 		keyName = "enableMenuManipulation",
@@ -143,6 +150,31 @@ public interface RuneUtilsConfig extends Config
 	default Color slotSelectionColor()
 	{
 		return new Color(255, 255, 0, 120);
+	}
+
+	// Dev Server Settings
+	@ConfigItem(
+		keyName = "enableDevServer",
+		name = "Enable Dev Server",
+		description = "Automatically start the dev server when the plugin loads",
+		section = devServerSection,
+		position = 0
+	)
+	default boolean enableDevServer()
+	{
+		return true;
+	}
+
+	@ConfigItem(
+		keyName = "devServerPort",
+		name = "Dev Server Port",
+		description = "Port for the dev server HTTP and WebSocket",
+		section = devServerSection,
+		position = 1
+	)
+	default int devServerPort()
+	{
+		return 3000;
 	}
 
 	// Profile persistence (hidden from UI)

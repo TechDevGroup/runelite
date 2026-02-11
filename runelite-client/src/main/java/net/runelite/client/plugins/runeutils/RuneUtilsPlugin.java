@@ -87,6 +87,7 @@ public class RuneUtilsPlugin extends Plugin
 	private final SlotSelectionState slotSelectionState = new SlotSelectionState();
 
 	// Dev server components
+	private DevServerManager devServerManager;
 	private DevServerClient devClient;
 	private HotReloadManager hotReloadManager;
 	private GameStateStreamer gameStateStreamer;
@@ -191,8 +192,26 @@ public class RuneUtilsPlugin extends Plugin
 		// Register mouse listener for slot selection and edge tabs
 		mouseManager.registerMouseListener(mouseListener);
 
-		// Initialize dev server integration
-		initDevServer();
+		// Launch dev server and then connect
+		if (config.enableDevServer())
+		{
+			devServerManager = new DevServerManager(config.devServerPort());
+			devServerManager.start().thenAccept(success -> {
+				if (success)
+				{
+					log.info("[RuneUtils] Dev server is ready, initializing connection");
+				}
+				else
+				{
+					log.warn("[RuneUtils] Dev server failed to start, attempting connection anyway");
+				}
+				initDevServer();
+			});
+		}
+		else
+		{
+			initDevServer();
+		}
 
 		panel.log("Plugin started successfully");
 	}
@@ -201,7 +220,8 @@ public class RuneUtilsPlugin extends Plugin
 	{
 		try
 		{
-			String devServerUrl = System.getProperty("runeutils.devserver", "ws://localhost:3000/ws");
+			int port = config.devServerPort();
+			String devServerUrl = System.getProperty("runeutils.devserver", "ws://localhost:" + port + "/ws");
 			devClient = new DevServerClient(devServerUrl);
 
 			// Initialize JS engine
@@ -292,6 +312,13 @@ public class RuneUtilsPlugin extends Plugin
 
 		// Shutdown dev server components
 		shutdownDevServer();
+
+		// Stop managed dev server process
+		if (devServerManager != null)
+		{
+			devServerManager.stop();
+			devServerManager = null;
+		}
 
 		// Remove sidebar panel
 		if (navButton != null)

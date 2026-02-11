@@ -171,6 +171,52 @@ tasks.processResources {
     }
 }
 
+// Dev server bundling: build frontend, generate manifest, copy into JAR resources
+val devServerDir = file("${rootProject.projectDir}/../dev-server")
+
+val npmCommand = if (org.gradle.internal.os.OperatingSystem.current().isWindows) "npm.cmd" else "npm"
+
+val buildDevServerFrontend = tasks.register<Exec>("buildDevServerFrontend") {
+    workingDir = devServerDir
+    commandLine(npmCommand, "run", "build")
+    inputs.dir(file("${devServerDir}/client"))
+    inputs.file(file("${devServerDir}/vite.config.js"))
+    outputs.dir(file("${devServerDir}/dist"))
+}
+
+val bundleDevServer = tasks.register<Copy>("bundleDevServer") {
+    dependsOn(buildDevServerFrontend)
+    dependsOn(tasks.processResources)
+
+    from(devServerDir) {
+        include("src/**")
+        include("package.json")
+        include("package-lock.json")
+        include("dist/**")
+        exclude("node_modules/**")
+        exclude("data/**")
+    }
+
+    into(sourceSets.main.map { File(it.output.resourcesDir, "dev-server") })
+
+    // Generate resource manifest after copy
+    doLast {
+        val outputDir = sourceSets.main.get().output.resourcesDir!!
+        val devServerResDir = File(outputDir, "dev-server")
+        val manifest = mutableListOf<String>()
+        devServerResDir.walkTopDown()
+            .filter { it.isFile && it.name != ".resource-manifest" }
+            .forEach { f ->
+                manifest.add(f.relativeTo(devServerResDir).path.replace('\\', '/'))
+            }
+        File(devServerResDir, ".resource-manifest").writeText(manifest.joinToString("\n"))
+        println("[bundleDevServer] Bundled ${manifest.size} files into dev-server resources")
+    }
+}
+
+// Ensure dev server is bundled before shadowJar and classes
+tasks.named("classes") { dependsOn(bundleDevServer) }
+
 tasks.compileJava {
     options.isFork = true
 }
